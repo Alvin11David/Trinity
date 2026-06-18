@@ -1,0 +1,33 @@
+from rest_framework import serializers
+from .models import Match, MatchRoom, MatchEvent
+
+
+class MatchEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MatchEvent
+        fields = ['id', 'event_type', 'team', 'player', 'minute', 'detail', 'created_at']
+
+
+class MatchSerializer(serializers.ModelSerializer):
+    events = MatchEventSerializer(many=True, read_only=True)
+    has_room = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Match
+        fields = [
+            'id', 'api_football_id', 'league', 'home_team', 'away_team',
+            'home_team_logo', 'away_team_logo', 'kickoff_time', 'status',
+            'minute', 'home_score', 'away_score', 'live_stats',
+            'winnie_prediction', 'events', 'has_room', 'updated_at'
+        ]
+
+    def get_has_room(self, obj):
+        return hasattr(obj, 'room')
+
+
+class MatchRoomSerializer(serializers.ModelSerializer):
+    match = MatchSerializer(read_only=True)
+
+    class Meta:
+        model = MatchRoom
+        fields = ['id', 'match', 'conversation', 'created_at']
