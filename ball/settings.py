@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'channels',
     'users',
+    'feed',
 ]
 
 MIDDLEWARE = [
