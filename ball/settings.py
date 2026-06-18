@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     'feed',
     'chat',
     'communities',
+    'matches',
 ]
 
 MIDDLEWARE = [
