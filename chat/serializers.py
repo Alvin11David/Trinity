@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import Conversation, Message, Membership
 from users.serializers import UserSerializer
+from users.models import Contact, Follow
 
 
 class MembershipSerializer(serializers.ModelSerializer):
@@ -55,6 +56,12 @@ class ConversationSerializer(serializers.ModelSerializer):
         return None
 
 
+def are_mutual_contacts(user_a, user_b):
+    a_has_b = Contact.objects.filter(user=user_a, matched_user=user_b).exists()
+    b_has_a = Contact.objects.filter(user=user_b, matched_user=user_a).exists()
+    return a_has_b and b_has_a
+
+
 class ConversationCreateSerializer(serializers.ModelSerializer):
     participant_ids = serializers.ListField(
         child=serializers.IntegerField(), write_only=True
@@ -67,7 +74,43 @@ class ConversationCreateSerializer(serializers.ModelSerializer):
             'name', 'description', 'is_public', 'participant_ids'
         ]
 
+    def validate(self, data):
+        request = self.context['request']
+        conversation_type = data.get('conversation_type', 'direct')
+        participant_ids = data.get('participant_ids', [])
+
+        if conversation_type == 'direct':
+            if len(participant_ids) != 1:
+                raise serializers.ValidationError('Direct messages require exactly one other participant.')
+
+            from users.models import User
+            try:
+                target = User.objects.get(pk=participant_ids[0])
+            except User.DoesNotExist:
+                raise serializers.ValidationError('Target user not found.')
+
+            mutual = are_mutual_contacts(request.user, target)
+            i_follow_them = Follow.objects.filter(follower=request.user, following=target).exists()
+
+            if not mutual and not i_follow_them:
+                raise serializers.ValidationError(
+                    'You can only message users you follow, or users who have your contact saved mutually.'
+                )
+
+            existing = Conversation.objects.filter(
+                conversation_type='direct',
+                participants=request.user
+            ).filter(participants=target).first()
+            if existing:
+                data['_existing_conversation'] = existing
+
+        return data
+
     def create(self, validated_data):
+        existing = validated_data.pop('_existing_conversation', None)
+        if existing:
+            return existing
+
         participant_ids = validated_data.pop('participant_ids')
         request = self.context['request']
         conversation = Conversation.objects.create(**validated_data)
