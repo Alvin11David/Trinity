@@ -3,11 +3,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-import requests
 from .models import Match, MatchRoom, MatchEvent
 from .serializers import MatchSerializer, MatchRoomSerializer
+from .winnie_client import winnie_client
 from chat.models import Conversation, Membership
-
 
 class MatchListView(generics.ListAPIView):
     serializer_class = MatchSerializer
@@ -34,23 +33,20 @@ class MatchDetailView(generics.RetrieveAPIView):
     def retrieve(self, request, *args, **kwargs):
         match = self.get_object()
         # Fetch fresh Winnie prediction if older than 1 hour
-        if not match.winnie_prediction or not match.prediction_fetched_at or \
-                (timezone.now() - match.prediction_fetched_at).seconds > 3600:
-            try:
-                response = requests.get(
-                    f'http://localhost:8000/api/predictions/{match.api_football_id}/',
-                    timeout=5
-                )
-                if response.status_code == 200:
-                    match.winnie_prediction = response.json()
-                    match.prediction_fetched_at = timezone.now()
-                    match.save()
-            except requests.RequestException:
-                pass
+        stale = (
+            not match.winnie_prediction
+            or not match.prediction_fetched_at
+            or (timezone.now() - match.prediction_fetched_at).seconds > 3600
+        )
+        if stale:
+            prediction = winnie_client.get_prediction_for_match(match.api_football_id)
+            if prediction:
+                match.winnie_prediction = prediction
+                match.prediction_fetched_at = timezone.now()
+                match.save()
         serializer = self.get_serializer(match)
         return Response(serializer.data)
-
-
+    
 class LiveMatchesView(generics.ListAPIView):
     serializer_class = MatchSerializer
     permission_classes = [permissions.IsAuthenticated]
