@@ -13,4 +13,7 @@ urlpatterns = [
 
     # Match Room
     path('<int:pk>/room/', views.MatchRoomView.as_view(), name='match_room'),
+
+    # Sync Predictions
+    path('sync-predictions/', views.SyncPredictionsView.as_view(), name='sync_predictions'),
 ]

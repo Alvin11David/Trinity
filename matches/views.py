@@ -106,3 +106,36 @@ class LeagueMatchesView(generics.ListAPIView):
         return Match.objects.filter(
             league=league
         ).prefetch_related('events')
+    
+class SyncPredictionsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        league = request.data.get('league')
+        predictions = winnie_client.get_predictions(league=league)
+
+        if predictions is None:
+            return Response(
+                {'error': 'Could not reach Winnie API.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        updated_count = 0
+        results = predictions if isinstance(predictions, list) else predictions.get('results', [])
+
+        for item in results:
+            match_id = item.get('match_id') or item.get('id')
+            if not match_id:
+                continue
+            match = Match.objects.filter(api_football_id=match_id).first()
+            if match:
+                match.winnie_prediction = item
+                match.prediction_fetched_at = timezone.now()
+                match.save()
+                updated_count += 1
+
+        return Response({
+            'status': 'synced',
+            'updated_count': updated_count,
+            'total_received': len(results)
+        })
