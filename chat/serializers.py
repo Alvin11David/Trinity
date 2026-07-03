@@ -14,14 +14,24 @@ class MembershipSerializer(serializers.ModelSerializer):
 
 class MessageSerializer(serializers.ModelSerializer):
     sender = UserSerializer(read_only=True)
+    match_card = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
         fields = [
             'id', 'conversation', 'sender', 'content',
             'message_type', 'match_id', 'metadata',
-            'is_read', 'created_at'
+            'match_card', 'is_read', 'created_at'
         ]
+
+    def get_match_card(self, obj):
+        if obj.message_type == 'match_card' and obj.match_id:
+            from matches.models import Match
+            from matches.serializers import MatchCardSerializer
+            match = Match.objects.filter(id=obj.match_id).first()
+            if match:
+                return MatchCardSerializer(match).data
+        return None
 
 
 class ConversationSerializer(serializers.ModelSerializer):
