@@ -9,32 +9,36 @@ class Match(models.Model):
         ('postponed', 'Postponed'),
     ]
 
-    LEAGUE_CHOICES = [
-        ('EPL', 'English Premier League'),
-        ('LA_LIGA', 'La Liga'),
-        ('SERIE_A', 'Serie A'),
-        ('BUNDESLIGA', 'Bundesliga'),
-        ('LIGUE_1', 'Ligue 1'),
-    ]
-
     api_football_id = models.IntegerField(unique=True)
-    league = models.CharField(max_length=20, choices=LEAGUE_CHOICES)
+    league = models.CharField(max_length=20, blank=True, null=True)  # now free-text, was choices-limited
+    league_id = models.IntegerField(null=True, blank=True)  # API-Football numeric league ID
+    league_name = models.CharField(max_length=100, blank=True, null=True)
+    round = models.CharField(max_length=100, blank=True, null=True)  # e.g. "Regular Season - 1"
+    season = models.IntegerField(null=True, blank=True)
+
     home_team = models.CharField(max_length=100)
     away_team = models.CharField(max_length=100)
+    home_team_id = models.IntegerField(null=True, blank=True)
+    away_team_id = models.IntegerField(null=True, blank=True)
     home_team_logo = models.URLField(blank=True, null=True)
     away_team_logo = models.URLField(blank=True, null=True)
+
     kickoff_time = models.DateTimeField()
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='scheduled')
+    status_short = models.CharField(max_length=10, blank=True, null=True)  # raw API-Football code (FT, NS, 1H...)
     minute = models.IntegerField(null=True, blank=True)
 
-    # Scores
+    venue_name = models.CharField(max_length=150, blank=True, null=True)
+    venue_city = models.CharField(max_length=100, blank=True, null=True)
+    referee = models.CharField(max_length=100, blank=True, null=True)
+
     home_score = models.IntegerField(null=True, blank=True)
     away_score = models.IntegerField(null=True, blank=True)
+    halftime_home_score = models.IntegerField(null=True, blank=True)
+    halftime_away_score = models.IntegerField(null=True, blank=True)
 
-    # Live stats
     live_stats = models.JSONField(null=True, blank=True)
 
-    # Winnie prediction (cached from Winnie API)
     winnie_prediction = models.JSONField(null=True, blank=True)
     prediction_fetched_at = models.DateTimeField(null=True, blank=True)
 

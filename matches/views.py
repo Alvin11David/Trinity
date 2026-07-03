@@ -230,3 +230,77 @@ class LeagueStandingsView(generics.ListAPIView):
         if season:
             queryset = queryset.filter(season=season)
         return queryset
+
+
+class SyncFixturesView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    STATUS_MAP = {
+        'NS': 'scheduled',
+        'TBD': 'scheduled',
+        '1H': 'live', 'HT': 'live', '2H': 'live', 'ET': 'live', 'P': 'live', 'BT': 'live',
+        'FT': 'finished', 'AET': 'finished', 'PEN': 'finished',
+        'PST': 'postponed', 'CANC': 'postponed', 'ABD': 'postponed', 'SUSP': 'postponed', 'INT': 'postponed',
+    }
+
+    def post(self, request):
+        league_id = request.data.get('league_id')
+        season = request.data.get('season')
+
+        if not league_id or not season:
+            return Response(
+                {'error': 'league_id and season are required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        from .api_football_client import api_football_client
+
+        data = api_football_client.get_fixtures(league_id=league_id, season=season)
+
+        if not data:
+            return Response(
+                {'error': 'Could not fetch fixtures from API-Football.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        updated_count = 0
+        for item in data:
+            fixture = item['fixture']
+            league_info = item['league']
+            teams = item['teams']
+            goals = item['goals']
+            score = item['score']
+
+            status_short = fixture['status']['short']
+            mapped_status = self.STATUS_MAP.get(status_short, 'scheduled')
+
+            Match.objects.update_or_create(
+                api_football_id=fixture['id'],
+                defaults={
+                    'league': league_info.get('name', '')[:20],
+                    'league_id': league_info.get('id'),
+                    'league_name': league_info.get('name'),
+                    'round': league_info.get('round'),
+                    'season': league_info.get('season'),
+                    'home_team': teams['home']['name'],
+                    'away_team': teams['away']['name'],
+                    'home_team_id': teams['home']['id'],
+                    'away_team_id': teams['away']['id'],
+                    'home_team_logo': teams['home']['logo'],
+                    'away_team_logo': teams['away']['logo'],
+                    'kickoff_time': fixture['date'],
+                    'status': mapped_status,
+                    'status_short': status_short,
+                    'minute': fixture['status'].get('elapsed'),
+                    'venue_name': fixture['venue'].get('name'),
+                    'venue_city': fixture['venue'].get('city'),
+                    'referee': fixture.get('referee'),
+                    'home_score': goals.get('home'),
+                    'away_score': goals.get('away'),
+                    'halftime_home_score': score['halftime'].get('home'),
+                    'halftime_away_score': score['halftime'].get('away'),
+                }
+            )
+            updated_count += 1
+
+        return Response({'status': 'synced', 'updated_count' : updated_count})
