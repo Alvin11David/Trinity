@@ -81,3 +81,14 @@ class MatchEvent(models.Model):
 
     def __str__(self):
         return f"{self.event_type} - {self.player} {self.minute}'"
+
+
+def validate_match_id(match_id):
+    """
+    Shared validation used by both chat (REST + WebSocket) and feed
+    when creating a match_card/match_object referencing a Match.
+    Returns True if match_id is valid or None (no match attached), False otherwise.
+    """
+    if match_id is None:
+        return True
+    return Match.objects.filter(id=match_id).exists()

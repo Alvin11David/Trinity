@@ -33,6 +33,16 @@ class MessageSerializer(serializers.ModelSerializer):
                 return MatchCardSerializer(match).data
         return None
 
+    def validate(self, data):
+        if data.get('message_type') == 'match_card':
+            match_id = data.get('match_id')
+            if not match_id:
+                raise serializers.ValidationError('match_id is required for match_card messages.')
+            from matches.models import validate_match_id
+            if not validate_match_id(match_id):
+                raise serializers.ValidationError('Invalid match_id — no matching Match found.')
+        return data
+
 
 class ConversationSerializer(serializers.ModelSerializer):
     participants = UserSerializer(many=True, read_only=True)

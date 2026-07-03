@@ -49,6 +49,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         message = await self.save_message(content, message_type, match_id, metadata)
 
+        # save_message returns None when match_card validation fails
+        if message is None:
+            await self.send(text_data=json.dumps({
+                'error': 'Invalid match_id — no matching Match found.'
+            }))
+            return
+
         await self.channel_layer.group_send(
             self.room_group_name,
             {
@@ -91,6 +98,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def save_message(self, content, message_type, match_id, metadata):
+        # Validate match_card references a real Match before persisting.
+        # Runs in sync context, so the error is surfaced by receive() via self.send().
+        if message_type == 'match_card':
+            from matches.models import validate_match_id
+            if not match_id or not validate_match_id(match_id):
+                return None
         message = Message.objects.create(
             conversation_id=self.conversation_id,
             sender=self.user,
