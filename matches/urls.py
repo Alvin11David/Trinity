@@ -4,6 +4,11 @@ from . import views
 urlpatterns = [
     # Matches
     path('', views.MatchListView.as_view(), name='matches'),
+
+    # Standings
+    path('standings/sync/', views.SyncStandingsView.as_view(), name='sync_standings'),
+    path('standings/', views.LeagueStandingsView.as_view(), name='league_standings'),
+
     path('<int:pk>/', views.MatchDetailView.as_view(), name='match_detail'),
 
     path('cards/batch/', views.MatchCardBatchView.as_view(), name='match_cards_batch'),
