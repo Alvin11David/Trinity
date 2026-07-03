@@ -4,7 +4,7 @@ from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from .models import Match, MatchRoom, MatchEvent
-from .serializers import MatchSerializer, MatchRoomSerializer
+from .serializers import MatchSerializer, MatchRoomSerializer, MatchCardSerializer
 from .winnie_client import winnie_client
 from chat.models import Conversation, Membership
 
@@ -139,3 +139,21 @@ class SyncPredictionsView(APIView):
             'updated_count': updated_count,
             'total_received': len(results)
         })
+    
+class MatchCardBatchView(APIView):
+    """
+    Batch-fetch lightweight card data for multiple matches at once.
+    Used when rendering a chat/feed screen with several match cards.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        match_ids = request.data.get('match_ids', [])
+        if not isinstance(match_ids, list) or not match_ids:
+            return Response({'error': 'match_ids must be a non-empty list.'}, status=status.HTTP_400_BAD_REQUEST)
+        if len(match_ids) > 50:
+            return Response({'error': 'Maximum 50 match_ids per request.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        matches = Match.objects.filter(id__in=match_ids)
+        serializer = MatchCardSerializer(matches, many=True)
+        return Response(serializer.data)
