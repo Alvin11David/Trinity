@@ -14,10 +14,10 @@ class MatchListView(generics.ListAPIView):
 
     def get_queryset(self):
         queryset = Match.objects.all().prefetch_related('events')
-        league = self.request.query_params.get('league')
+        league_id = self.request.query_params.get('league_id')
         status_filter = self.request.query_params.get('status')
-        if league:
-            queryset = queryset.filter(league=league)
+        if league_id:
+            queryset = queryset.filter(league_id=league_id)
         if status_filter:
             queryset = queryset.filter(status=status_filter)
         return queryset
@@ -102,9 +102,9 @@ class LeagueMatchesView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        league = self.kwargs['league']
+        league_id = self.kwargs['league_id']
         return Match.objects.filter(
-            league=league
+            league_id=league_id
         ).prefetch_related('events')
     
 class SyncPredictionsView(APIView):

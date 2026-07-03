@@ -20,7 +20,7 @@ urlpatterns = [
     path('upcoming/', views.UpcomingMatchesView.as_view(), name='upcoming_matches'),
 
     # League
-    path('league/<str:league>/', views.LeagueMatchesView.as_view(), name='league_matches'),
+    path('league/<int:league_id>/', views.LeagueMatchesView.as_view(), name='league_matches'),
 
     # Match Room
     path('<int:pk>/room/', views.MatchRoomView.as_view(), name='match_room'),
