@@ -31,3 +31,22 @@ class MatchRoomSerializer(serializers.ModelSerializer):
     class Meta:
         model = MatchRoom
         fields = ['id', 'match', 'conversation', 'created_at']
+
+class MatchCardSerializer(serializers.ModelSerializer):
+    """
+    Lightweight serializer for match cards shared in chat/feed.
+    Optimized for frequent, lightweight fetches — not the full match detail.
+    """
+    has_prediction = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Match
+        fields = [
+            'id', 'league', 'home_team', 'away_team',
+            'home_team_logo', 'away_team_logo', 'kickoff_time',
+            'status', 'minute', 'home_score', 'away_score',
+            'has_prediction', 'updated_at'
+        ]
+
+    def get_has_prediction(self, obj):
+        return bool(obj.winnie_prediction)
