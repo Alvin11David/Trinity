@@ -115,3 +115,6 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 WINNIE_API_BASE_URL = os.getenv('WINNIE_API_BASE_URL', 'http://127.0.0.1:8000')
+
+API_FOOTBALL_BASE_URL = 'https://v3.football.api-sports.io'
+API_FOOTBALL_KEY = os.getenv('API_FOOTBALL_KEY')
