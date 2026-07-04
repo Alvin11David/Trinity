@@ -68,3 +68,22 @@ class TeamStatistics(models.Model):
 
     def __str__(self):
         return f"{self.team_name} stats - {self.season}"
+
+
+class League(models.Model):
+    league_id = models.IntegerField(unique=True)
+    name = models.CharField(max_length=150)
+    league_type = models.CharField(max_length=30, blank=True, null=True)
+    logo = models.URLField(blank=True, null=True)
+    country_name = models.CharField(max_length=100, blank=True, null=True)
+    country_code = models.CharField(max_length=10, blank=True, null=True)
+    country_flag = models.URLField(blank=True, null=True)
+    current_season = models.IntegerField(null=True, blank=True)
+    is_core_league = models.BooleanField(default=False)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['country_name', 'name']
+
+    def __str__(self):
+        return f"{self.name} ({self.country_name})"

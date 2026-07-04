@@ -10,4 +10,7 @@ urlpatterns = [
 
     path('team-stats/sync/', views.SyncTeamStatisticsView.as_view(), name='sync_team_stats'),
     path('team-stats/', views.TeamStatisticsView.as_view(), name='team_stats'),
+
+    path('sync/', views.SyncLeaguesView.as_view(), name='sync_leagues'),
+    path('', views.LeagueListView.as_view(), name='league_list'),
 ]

@@ -3,8 +3,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from matches.api_football_client import api_football_client
-from .models import LeagueStanding
-from .serializers import LeagueStandingSerializer, PlayerLeagueStatSerializer, TeamStatisticsSerializer
+from .models import LeagueStanding, League
+from .serializers import (
+    LeagueStandingSerializer, PlayerLeagueStatSerializer,
+    TeamStatisticsSerializer, LeagueSerializer
+)
 
 
 class SyncStandingsView(APIView):
@@ -201,3 +204,67 @@ class TeamStatisticsView(generics.RetrieveAPIView):
         team_id = self.request.query_params.get('team_id')
         season = self.request.query_params.get('season')
         return get_object_or_404(TeamStatistics, league_id=league_id, team_id=team_id, season=season)
+
+
+CORE_LEAGUE_IDS = {39, 140, 135, 78, 61}  # EPL, La Liga, Serie A, Bundesliga, Ligue 1
+
+
+class SyncLeaguesView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        country = request.data.get('country')
+
+        from matches.api_football_client import api_football_client
+        from .models import League
+
+        data = api_football_client.get_leagues(country=country)
+
+        if not data:
+            return Response(
+                {'error': 'Could not fetch leagues from API-Football.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        updated_count = 0
+        for entry in data:
+            league_info = entry['league']
+            country_info = entry.get('country', {})
+            seasons = entry.get('seasons', [])
+            current_season = next((s['year'] for s in seasons if s.get('current')), None)
+
+            League.objects.update_or_create(
+                league_id=league_info['id'],
+                defaults={
+                    'name': league_info['name'],
+                    'league_type': league_info.get('type'),
+                    'logo': league_info.get('logo'),
+                    'country_name': country_info.get('name'),
+                    'country_code': country_info.get('code'),
+                    'country_flag': country_info.get('flag'),
+                    'current_season': current_season,
+                    'is_core_league': league_info['id'] in CORE_LEAGUE_IDS,
+                }
+            )
+            updated_count += 1
+
+        return Response({'status': 'synced', 'updated_count': updated_count})
+
+
+class LeagueListView(generics.ListAPIView):
+    serializer_class = LeagueSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        from .models import League
+        queryset = League.objects.all()
+        search = self.request.query_params.get('search')
+        country = self.request.query_params.get('country')
+        core_only = self.request.query_params.get('core_only')
+        if search:
+            queryset = queryset.filter(name__icontains=search)
+        if country:
+            queryset = queryset.filter(country_name__iexact=country)
+        if core_only == 'true':
+            queryset = queryset.filter(is_core_league=True)
+        return queryset
