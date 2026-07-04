@@ -17,7 +17,7 @@ class APIFootballClient:
         self.headers = {'x-apisports-key': settings.API_FOOTBALL_KEY}
         self.timeout = 8
 
-    def _get(self, endpoint, params=None):
+    def _get(self, endpoint, params=None, return_full=False):
         url = f"{self.base_url}/{endpoint}"
         try:
             response = requests.get(url, headers=self.headers, params=params, timeout=self.timeout)
@@ -26,6 +26,8 @@ class APIFootballClient:
             if data.get('errors'):
                 logger.warning(f"API-Football returned errors: {data['errors']} for {url}")
                 return None
+            if return_full:
+                return data
             return data.get('response')
         except requests.exceptions.Timeout:
             logger.warning(f"API-Football timeout: {url}")
@@ -79,7 +81,7 @@ class APIFootballClient:
         return self._get('players/squads', params={'team': team_id})
 
     def get_players(self, team_id, season, page=1):
-        return self._get('players', params={'team': team_id, 'season': season, 'page': page})
+        return self._get('players', params={'team': team_id, 'season': season, 'page': page}, return_full=True)
 
     def get_top_scorers(self, league_id, season):
         return self._get('players/topscorers', params={'league': league_id, 'season': season})
