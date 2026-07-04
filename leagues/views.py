@@ -4,7 +4,7 @@ from rest_framework.views import APIView
 
 from matches.api_football_client import api_football_client
 from .models import LeagueStanding
-from .serializers import LeagueStandingSerializer, PlayerLeagueStatSerializer
+from .serializers import LeagueStandingSerializer, PlayerLeagueStatSerializer, TeamStatisticsSerializer
 
 
 class SyncStandingsView(APIView):
@@ -146,3 +146,58 @@ class PlayerLeagueStatsView(generics.ListAPIView):
         if season:
             queryset = queryset.filter(season=season)
         return queryset
+
+
+class SyncTeamStatisticsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        league_id = request.data.get('league_id')
+        team_id = request.data.get('team_id')
+        season = request.data.get('season')
+
+        if not league_id or not team_id or not season:
+            return Response(
+                {'error': 'league_id, team_id, and season are required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        from matches.api_football_client import api_football_client
+        from .models import TeamStatistics
+
+        data = api_football_client.get_team_statistics(league_id=league_id, team_id=team_id, season=season)
+
+        if not data:
+            return Response(
+                {'error': 'Could not fetch team statistics from API-Football.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        team_info = data.get('team', {})
+
+        TeamStatistics.objects.update_or_create(
+            league_id=league_id,
+            team_id=team_id,
+            season=season,
+            defaults={
+                'team_name': team_info.get('name', ''),
+                'team_logo': team_info.get('logo'),
+                'form': data.get('form', ''),
+                'data': data,
+            }
+        )
+
+        return Response({'status': 'synced'})
+
+
+class TeamStatisticsView(generics.RetrieveAPIView):
+    serializer_class = TeamStatisticsSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_object(self):
+        from .models import TeamStatistics
+        from django.shortcuts import get_object_or_404
+        league_id = self.request.query_params.get('league_id')
+        team_id = self.request.query_params.get('team_id')
+        season = self.request.query_params.get('season')
+        return get_object_or_404(TeamStatistics, league_id=league_id, team_id=team_id, season=season)

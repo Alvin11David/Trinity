@@ -51,3 +51,20 @@ class PlayerLeagueStat(models.Model):
 
     def __str__(self):
         return f"{self.player_name} - {self.rank_type} #{self.rank_position}"
+
+
+class TeamStatistics(models.Model):
+    league_id = models.IntegerField()
+    team_id = models.IntegerField()
+    season = models.IntegerField()
+    team_name = models.CharField(max_length=100)
+    team_logo = models.URLField(blank=True, null=True)
+    form = models.CharField(max_length=100, blank=True)
+    data = models.JSONField()
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('league_id', 'team_id', 'season')
+
+    def __str__(self):
+        return f"{self.team_name} stats - {self.season}"
