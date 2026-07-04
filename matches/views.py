@@ -304,3 +304,74 @@ class SyncFixturesView(APIView):
             updated_count += 1
 
         return Response({'status': 'synced', 'updated_count' : updated_count})
+    
+    class SyncPlayersView(APIView):
+        permission_classes = [permissions.IsAuthenticated]
+
+        def post(self, request):
+            team_id = request.data.get('team_id')
+            season = request.data.get('season')
+
+            if not team_id or not season:
+                return Response(
+                    {'error': 'team_id and season are required.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            from .api_football_client import api_football_client
+            from .models import Player
+
+            updated_count = 0
+            page = 1
+            total_pages = 1
+
+            while page <= total_pages:
+                data = api_football_client.get_players(team_id=team_id, season=season, page=page)
+
+                if not data:
+                    break
+
+                for entry in data:
+                    player_info = entry['player']
+                    stats = entry.get('statistics', [])
+
+                    # Use the first statistics entry to determine current team/position
+                    # (players sometimes have stats for multiple teams if transferred mid-season)
+                    primary_stat = stats[0] if stats else {}
+                    team_info = primary_stat.get('team', {})
+                    games_info = primary_stat.get('games', {})
+
+                    Player.objects.update_or_create(
+                        api_football_id=player_info['id'],
+                        defaults={
+                            'team_id': team_info.get('id', team_id),
+                            'team_name': team_info.get('name', ''),
+                            'name': player_info['name'],
+                            'first_name': player_info.get('firstname'),
+                            'last_name': player_info.get('lastname'),
+                            'age': player_info.get('age'),
+                            'number': games_info.get('number'),
+                            'position': games_info.get('position'),
+                            'photo': player_info.get('photo'),
+                            'nationality': player_info.get('nationality'),
+                            'birth_date': player_info.get('birth', {}).get('date'),
+                            'birth_place': player_info.get('birth', {}).get('place'),
+                            'height': player_info.get('height'),
+                            'weight': player_info.get('weight'),
+                            'injured': player_info.get('injured', False),
+                            'statistics': stats,
+                        }
+                    )
+                    updated_count += 1
+
+                # API-Football includes paging info at the top level of the raw response,
+                # but our client only returns `response` — we need paging too.
+                # For now, assume most squads fit in 2 pages (20-30 players); stop if a page returns fewer than 20.
+                if len(data) < 20:
+                    break
+                page += 1
+
+                if page > 5:  # safety cap
+                    break
+
+            return Response({'status': 'synced', 'updated_count': updated_count})
