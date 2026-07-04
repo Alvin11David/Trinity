@@ -15,10 +15,13 @@ class MatchSerializer(serializers.ModelSerializer):
     class Meta:
         model = Match
         fields = [
-            'id', 'api_football_id', 'league', 'home_team', 'away_team',
-            'home_team_logo', 'away_team_logo', 'kickoff_time', 'status',
-            'minute', 'home_score', 'away_score', 'live_stats',
-            'winnie_prediction', 'events', 'has_room', 'updated_at'
+            'id', 'api_football_id', 'league', 'league_id', 'league_name',
+            'round', 'season', 'home_team', 'away_team', 'home_team_id',
+            'away_team_id', 'home_team_logo', 'away_team_logo', 'kickoff_time',
+            'status', 'status_short', 'minute', 'venue_name', 'venue_city',
+            'referee', 'home_score', 'away_score', 'halftime_home_score',
+            'halftime_away_score', 'live_stats', 'winnie_prediction', 'events',
+            'has_room', 'updated_at'
         ]
 
     def get_has_room(self, obj):
