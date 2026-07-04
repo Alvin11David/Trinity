@@ -27,3 +27,27 @@ class LeagueStanding(models.Model):
 
     def __str__(self):
         return f"{self.team_name} - {self.league_name} ({self.season})"
+
+
+class PlayerLeagueStat(models.Model):
+    league_id = models.IntegerField()
+    season = models.IntegerField()
+    player_id = models.IntegerField()
+    player_name = models.CharField(max_length=150)
+    player_photo = models.URLField(blank=True, null=True)
+    team_id = models.IntegerField()
+    team_name = models.CharField(max_length=100)
+    team_logo = models.URLField(blank=True, null=True)
+    goals = models.IntegerField(default=0)
+    assists = models.IntegerField(default=0)
+    appearances = models.IntegerField(default=0)
+    rank_type = models.CharField(max_length=20)
+    rank_position = models.IntegerField()
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('league_id', 'season', 'player_id', 'rank_type')
+        ordering = ['rank_type', 'rank_position']
+
+    def __str__(self):
+        return f"{self.player_name} - {self.rank_type} #{self.rank_position}"

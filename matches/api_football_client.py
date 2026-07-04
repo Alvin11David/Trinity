@@ -77,6 +77,9 @@ class APIFootballClient:
     def get_team(self, team_id):
         return self._get('teams', params={'id': team_id})
 
+    def get_team_statistics(self, league_id, team_id, season):
+        return self._get('teams/statistics', params={'league': league_id, 'team': team_id, 'season': season})
+
     def get_squad(self, team_id):
         return self._get('players/squads', params={'team': team_id})
 
