@@ -31,10 +31,19 @@ class TeamStatisticsSerializer(serializers.ModelSerializer):
 
 
 class LeagueSerializer(serializers.ModelSerializer):
+    is_following = serializers.SerializerMethodField()
+
     class Meta:
         model = League
         fields = [
             'id', 'league_id', 'name', 'league_type', 'logo',
             'country_name', 'country_code', 'country_flag',
-            'current_season', 'is_core_league', 'updated_at'
+            'current_season', 'is_core_league', 'is_featured',
+            'is_following', 'updated_at'
         ]
+
+    def get_is_following(self, obj):
+        request = self.context.get('request')
+        if request and request.user.is_authenticated:
+            return obj.followers.filter(user=request.user).exists()
+        return False

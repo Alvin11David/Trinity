@@ -80,6 +80,7 @@ class League(models.Model):
     country_flag = models.URLField(blank=True, null=True)
     current_season = models.IntegerField(null=True, blank=True)
     is_core_league = models.BooleanField(default=False)
+    is_featured = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -87,3 +88,17 @@ class League(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.country_name})"
+
+
+class UserLeagueFollow(models.Model):
+    user = models.ForeignKey('users.User', on_delete=models.CASCADE, related_name='followed_leagues')
+    league = models.ForeignKey(League, on_delete=models.CASCADE, related_name='followers')
+    order = models.IntegerField(default=0)  # for custom reordering, like FotMob's drag handles
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'league')
+        ordering = ['order', 'created_at']
+
+    def __str__(self):
+        return f"{self.user.username} follows {self.league.name}"

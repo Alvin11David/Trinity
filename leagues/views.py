@@ -1,9 +1,10 @@
 from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.shortcuts import get_object_or_404
 
 from matches.api_football_client import api_football_client
-from .models import LeagueStanding, League
+from .models import LeagueStanding, League, UserLeagueFollow
 from .serializers import (
     LeagueStandingSerializer, PlayerLeagueStatSerializer,
     TeamStatisticsSerializer, LeagueSerializer
@@ -268,3 +269,26 @@ class LeagueListView(generics.ListAPIView):
         if core_only == 'true':
             queryset = queryset.filter(is_core_league=True)
         return queryset
+
+
+class FollowLeagueView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, league_id):
+        league = get_object_or_404(League, league_id=league_id)
+        follow, created = UserLeagueFollow.objects.get_or_create(user=request.user, league=league)
+        if not created:
+            follow.delete()
+            return Response({'status': 'unfollowed'})
+        return Response({'status': 'followed'})
+
+
+class FollowedLeaguesView(generics.ListAPIView):
+    serializer_class = LeagueSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return League.objects.filter(followers__user=self.request.user).order_by('followers__order')
+
+    def get_serializer_context(self):
+        return {'request': self.request}

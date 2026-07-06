@@ -12,5 +12,9 @@ urlpatterns = [
     path('team-stats/', views.TeamStatisticsView.as_view(), name='team_stats'),
 
     path('sync/', views.SyncLeaguesView.as_view(), name='sync_leagues'),
+
+    path('<int:league_id>/follow/', views.FollowLeagueView.as_view(), name='follow_league'),
+    path('following/', views.FollowedLeaguesView.as_view(), name='followed_leagues'),
+
     path('', views.LeagueListView.as_view(), name='league_list'),
 ]
