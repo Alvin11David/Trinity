@@ -86,6 +86,7 @@ def sync_player_stats_for_league(league_id, season):
                     'assists': goals_info.get('assists') or 0,
                     'appearances': games_info.get('appearences') or 0,
                     'rank_position': position,
+                    'full_stats': stat,
                 }
             )
             updated_count += 1

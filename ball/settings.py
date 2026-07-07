@@ -97,9 +97,13 @@ CELERY_TIMEZONE = 'Africa/Kampala'
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
 CELERY_BEAT_SCHEDULE = {
-    'sync-standings-hourly': {
+    'check-finished-matches-frequent': {
+        'task': 'matches.tasks.check_for_finished_matches',
+        'schedule': crontab(minute='*/3'),
+    },
+    'sync-standings-daily-safety-net': {
         'task': 'leagues.tasks.sync_all_featured_standings',
-        'schedule': crontab(minute=0),  # every hour, on the hour
+        'schedule': crontab(hour=4, minute=0),
     },
 }
 
