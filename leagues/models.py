@@ -43,6 +43,7 @@ class PlayerLeagueStat(models.Model):
     appearances = models.IntegerField(default=0)
     rank_type = models.CharField(max_length=20)
     rank_position = models.IntegerField()
+    full_stats = models.JSONField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

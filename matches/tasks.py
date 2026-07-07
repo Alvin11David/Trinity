@@ -1,0 +1,65 @@
+from celery import shared_task
+from django.utils import timezone
+from datetime import timedelta
+
+
+@shared_task
+def check_for_finished_matches():
+    """
+    Runs frequently (every 2-3 min). Checks matches that should have started
+    by now but aren't marked finished yet, re-fetches their live status from
+    API-Football, and triggers per-league resyncs for any that just completed.
+    """
+    from .models import Match
+    from matches.api_football_client import api_football_client
+
+    STATUS_MAP = {
+        'NS': 'scheduled', 'TBD': 'scheduled',
+        '1H': 'live', 'HT': 'live', '2H': 'live', 'ET': 'live', 'P': 'live', 'BT': 'live',
+        'FT': 'finished', 'AET': 'finished', 'PEN': 'finished',
+        'PST': 'postponed', 'CANC': 'postponed', 'ABD': 'postponed', 'SUSP': 'postponed', 'INT': 'postponed',
+    }
+
+    # Candidates: kicked off already, not yet marked finished/postponed
+    cutoff = timezone.now() - timedelta(hours=3)  # matches don't run longer than ~3hrs including delays
+    candidates = Match.objects.filter(
+        kickoff_time__lte=timezone.now(),
+        kickoff_time__gte=cutoff,
+        status__in=['scheduled', 'live'],
+    )
+
+    newly_finished_league_ids = set()
+
+    for match in candidates:
+        data = api_football_client._get('fixtures', params={'id': match.api_football_id})
+        if not data:
+            continue
+        fixture_data = data[0]
+        status_short = fixture_data['fixture']['status']['short']
+        new_status = STATUS_MAP.get(status_short, match.status)
+
+        was_finished = match.status == 'finished'
+        match.status = new_status
+        match.status_short = status_short
+        match.minute = fixture_data['fixture']['status'].get('elapsed')
+        match.home_score = fixture_data['goals'].get('home')
+        match.away_score = fixture_data['goals'].get('away')
+        match.save()
+
+        if new_status == 'finished' and not was_finished and match.league_id:
+            newly_finished_league_ids.add((match.league_id, match.season))
+
+    for league_id, season in newly_finished_league_ids:
+        if league_id and season:
+            resync_league_after_match.delay(league_id, season)
+
+    return f"Checked {candidates.count()} candidates, {len(newly_finished_league_ids)} leagues need resync"
+
+
+@shared_task
+def resync_league_after_match(league_id, season):
+    """Triggered immediately when a match in this league just finished."""
+    from leagues.tasks import sync_standings_for_league, sync_player_stats_for_league
+    sync_standings_for_league(league_id, season)
+    sync_player_stats_for_league(league_id, season)
+    return f"Resynced league {league_id} season {season} after match completion"
