@@ -160,18 +160,19 @@ def sync_next_batch_of_teams(batch_size=20):
                 data = api_football_client.get_players(team_id=status_row.team_id, season=status_row.season, page=page)
                 if not data or 'response' not in data:
                     break
-                total_pages = data.get('paging', {}).get('total', 1)
+                total_pages = (data.get('paging') or {}).get('total') or 1
                 for entry in data['response']:
                     player_info = entry['player']
-                    stats = entry.get('statistics', [])
+                    stats = entry.get('statistics') or []
                     primary_stat = stats[0] if stats else {}
-                    team_info = primary_stat.get('team', {})
-                    games_info = primary_stat.get('games', {})
+                    team_info = primary_stat.get('team') or {}
+                    games_info = primary_stat.get('games') or {}
+                    birth_info = player_info.get('birth') or {}
                     Player.objects.update_or_create(
                         api_football_id=player_info['id'],
                         defaults={
-                            'team_id': team_info.get('id', status_row.team_id),
-                            'team_name': team_info.get('name', status_row.team_name),
+                            'team_id': team_info.get('id') or status_row.team_id,
+                            'team_name': team_info.get('name') or status_row.team_name,
                             'name': player_info['name'],
                             'first_name': player_info.get('firstname'),
                             'last_name': player_info.get('lastname'),
@@ -180,11 +181,11 @@ def sync_next_batch_of_teams(batch_size=20):
                             'position': games_info.get('position'),
                             'photo': player_info.get('photo'),
                             'nationality': player_info.get('nationality'),
-                            'birth_date': player_info.get('birth', {}).get('date'),
-                            'birth_place': player_info.get('birth', {}).get('place'),
+                            'birth_date': birth_info.get('date'),
+                            'birth_place': birth_info.get('place'),
                             'height': player_info.get('height'),
                             'weight': player_info.get('weight'),
-                            'injured': player_info.get('injured', False),
+                            'injured': player_info.get('injured') or False,
                             'statistics': stats,
                         }
                     )
