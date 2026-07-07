@@ -103,3 +103,16 @@ class UserLeagueFollow(models.Model):
 
     def __str__(self):
         return f"{self.user.username} follows {self.league.name}"
+
+
+class LeagueTeamSyncStatus(models.Model):
+    league_id = models.IntegerField()
+    season = models.IntegerField()
+    team_id = models.IntegerField()
+    team_name = models.CharField(max_length=100, blank=True)
+    players_synced = models.BooleanField(default=False)
+    synced_at = models.DateTimeField(null=True, blank=True)
+    error = models.TextField(blank=True, null=True)
+
+    class Meta:
+        unique_together = ('league_id', 'season', 'team_id')

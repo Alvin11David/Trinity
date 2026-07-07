@@ -113,3 +113,92 @@ def sync_all_featured_standings():
             synced_count += 1
 
     return f"Synced standings for {synced_count} leagues"
+
+
+@shared_task
+def discover_teams_for_league(league_id, season):
+    """Fetch and record every team in a league/season, creating tracking rows."""
+    from matches.api_football_client import api_football_client
+    from .models import LeagueTeamSyncStatus
+
+    data = api_football_client._get('teams', params={'league': league_id, 'season': season})
+    if not data:
+        return f"No teams found for league {league_id} season {season}"
+
+    created = 0
+    for entry in data:
+        team = entry['team']
+        _, was_created = LeagueTeamSyncStatus.objects.get_or_create(
+            league_id=league_id, season=season, team_id=team['id'],
+            defaults={'team_name': team['name']}
+        )
+        if was_created:
+            created += 1
+    return f"Discovered {len(data)} teams for league {league_id}, {created} new"
+
+
+@shared_task
+def sync_next_batch_of_teams(batch_size=20):
+    """
+    Syncs full player data for up to `batch_size` teams that haven't been
+    synced yet. Call this repeatedly (manually or via Beat) to work through
+    the full backlog without exceeding quota in one run.
+    """
+    from .models import LeagueTeamSyncStatus
+    from players.models import Player
+    from matches.api_football_client import api_football_client
+
+    pending = LeagueTeamSyncStatus.objects.filter(players_synced=False).exclude(error__isnull=False)[:batch_size]
+    results = []
+
+    for status_row in pending:
+        try:
+            page = 1
+            total_pages = 1
+            synced_count = 0
+            while page <= total_pages:
+                data = api_football_client.get_players(team_id=status_row.team_id, season=status_row.season, page=page)
+                if not data or 'response' not in data:
+                    break
+                total_pages = data.get('paging', {}).get('total', 1)
+                for entry in data['response']:
+                    player_info = entry['player']
+                    stats = entry.get('statistics', [])
+                    primary_stat = stats[0] if stats else {}
+                    team_info = primary_stat.get('team', {})
+                    games_info = primary_stat.get('games', {})
+                    Player.objects.update_or_create(
+                        api_football_id=player_info['id'],
+                        defaults={
+                            'team_id': team_info.get('id', status_row.team_id),
+                            'team_name': team_info.get('name', status_row.team_name),
+                            'name': player_info['name'],
+                            'first_name': player_info.get('firstname'),
+                            'last_name': player_info.get('lastname'),
+                            'age': player_info.get('age'),
+                            'number': games_info.get('number'),
+                            'position': games_info.get('position'),
+                            'photo': player_info.get('photo'),
+                            'nationality': player_info.get('nationality'),
+                            'birth_date': player_info.get('birth', {}).get('date'),
+                            'birth_place': player_info.get('birth', {}).get('place'),
+                            'height': player_info.get('height'),
+                            'weight': player_info.get('weight'),
+                            'injured': player_info.get('injured', False),
+                            'statistics': stats,
+                        }
+                    )
+                    synced_count += 1
+                page += 1
+                if page > 5:
+                    break
+            status_row.players_synced = True
+            status_row.synced_at = timezone.now()
+            status_row.save()
+            results.append(f"{status_row.team_name}: {synced_count} players")
+        except Exception as e:
+            status_row.error = str(e)
+            status_row.save()
+            results.append(f"{status_row.team_name}: ERROR - {str(e)}")
+
+    return f"Processed {len(pending)} teams: " + "; ".join(results)
