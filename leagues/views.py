@@ -3,7 +3,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 
-from matches.api_football_client import api_football_client
 from .models import LeagueStanding, League, UserLeagueFollow
 from .serializers import (
     LeagueStandingSerializer, PlayerLeagueStatSerializer,
