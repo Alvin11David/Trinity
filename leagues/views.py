@@ -262,12 +262,15 @@ class LeagueListView(generics.ListAPIView):
         search = self.request.query_params.get('search')
         country = self.request.query_params.get('country')
         core_only = self.request.query_params.get('core_only')
+        featured_only = self.request.query_params.get('featured_only')
         if search:
             queryset = queryset.filter(name__icontains=search)
         if country:
             queryset = queryset.filter(country_name__iexact=country)
         if core_only == 'true':
             queryset = queryset.filter(is_core_league=True)
+        if featured_only == 'true':
+            queryset = queryset.filter(is_featured=True)
         return queryset
 
 
