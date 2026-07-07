@@ -11,7 +11,7 @@ class LeagueStanding(models.Model):
     rank = models.IntegerField()
     points = models.IntegerField()
     goals_diff = models.IntegerField()
-    form = models.CharField(max_length=10, blank=True)
+    form = models.CharField(max_length=10, blank=True, null=True, default='')
     description = models.CharField(max_length=200, blank=True, null=True)
     played = models.IntegerField()
     win = models.IntegerField()
