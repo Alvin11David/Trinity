@@ -20,7 +20,7 @@ class PlayerLeagueStatSerializer(serializers.ModelSerializer):
             'id', 'league_id', 'season', 'player_id', 'player_name',
             'player_photo', 'team_id', 'team_name', 'team_logo',
             'goals', 'assists', 'appearances', 'rank_type',
-            'rank_position', 'updated_at'
+            'rank_position', 'full_stats', 'updated_at'
         ]
 
 
