@@ -144,11 +144,24 @@ def sync_next_batch_of_teams(batch_size=20):
     synced yet. Call this repeatedly (manually or via Beat) to work through
     the full backlog without exceeding quota in one run.
     """
-    from .models import LeagueTeamSyncStatus
+    from django.db.models import F, OuterRef, Subquery
+    from .models import LeagueTeamSyncStatus, League
     from players.models import Player
     from matches.api_football_client import api_football_client
 
-    pending = LeagueTeamSyncStatus.objects.filter(players_synced=False).exclude(error__isnull=False)[:batch_size]
+    # Only process rows whose season matches that league's current season.
+    # Prevents stale/mistaken-season rows (e.g. a re-discovery run against
+    # the wrong season) from ever being silently synced.
+    current_season_subquery = League.objects.filter(
+        league_id=OuterRef('league_id')
+    ).values('current_season')[:1]
+
+    pending = (
+        LeagueTeamSyncStatus.objects
+        .annotate(league_current_season=Subquery(current_season_subquery))
+        .filter(players_synced=False, season=F('league_current_season'))
+        .exclude(error__isnull=False)
+    )[:batch_size]
     results = []
 
     for status_row in pending:
