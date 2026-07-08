@@ -119,7 +119,20 @@ def sync_all_featured_standings():
 def discover_teams_for_league(league_id, season):
     """Fetch and record every team in a league/season, creating tracking rows."""
     from matches.api_football_client import api_football_client
-    from .models import LeagueTeamSyncStatus
+    from .models import LeagueTeamSyncStatus, League
+
+    # Guard against creating a stale/mistaken-season cohort (e.g. calling
+    # with a leftover season value after a season rollover). If we have no
+    # League row for this league_id yet, we can't validate against
+    # anything, so we let it through rather than block on missing data.
+    league = League.objects.filter(league_id=league_id).first()
+    if league and league.current_season is not None and season != league.current_season:
+        return (
+            f"Refused: league {league_id} season {season} does not match "
+            f"League.current_season ({league.current_season}). "
+            f"Call with season={league.current_season} instead, or update "
+            f"League.current_season first if that value is out of date."
+        )
 
     data = api_football_client._get('teams', params={'league': league_id, 'season': season})
     if not data:
