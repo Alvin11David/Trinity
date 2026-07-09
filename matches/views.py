@@ -106,7 +106,29 @@ class LeagueMatchesView(generics.ListAPIView):
         return Match.objects.filter(
             league_id=league_id
         ).prefetch_related('events')
-    
+
+
+class TeamMatchesView(generics.ListAPIView):
+    serializer_class = MatchSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        team_id = self.kwargs['team_id']
+        from django.db.models import Q
+        return Match.objects.filter(Q(home_team_id=team_id) | Q(away_team_id=team_id)).order_by('kickoff_time')
+
+
+class TeamProfileView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, team_id):
+        from .api_football_client import api_football_client
+        data = api_football_client.get_team(team_id=team_id)
+        if not data:
+            return Response({'error': 'Team not found.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response(data[0])
+
+
 class SyncPredictionsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
