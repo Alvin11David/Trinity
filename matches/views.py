@@ -3,8 +3,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from .models import Match, MatchRoom, MatchEvent
-from .serializers import MatchSerializer, MatchRoomSerializer, MatchCardSerializer
+from .models import Match, MatchRoom, MatchEvent, PlayerMatchStat
+from .serializers import MatchSerializer, MatchRoomSerializer, MatchCardSerializer, PlayerMatchStatSerializer
 from .winnie_client import winnie_client
 from chat.models import Conversation, Membership
 
@@ -127,6 +127,17 @@ class TeamProfileView(APIView):
         if not data:
             return Response({'error': 'Team not found.'}, status=status.HTTP_404_NOT_FOUND)
         return Response(data[0])
+
+
+class PlayerMatchHistoryView(generics.ListAPIView):
+    serializer_class = PlayerMatchStatSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        player_id = self.kwargs['player_id']
+        return PlayerMatchStat.objects.filter(
+            player_id=player_id
+        ).select_related('match').order_by('-match__kickoff_time')
 
 
 class SyncPredictionsView(APIView):

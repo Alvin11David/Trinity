@@ -29,6 +29,7 @@ def check_for_finished_matches():
     )
 
     newly_finished_league_ids = set()
+    newly_finished_match_ids = []
 
     for match in candidates:
         data = api_football_client._get('fixtures', params={'id': match.api_football_id})
@@ -46,12 +47,19 @@ def check_for_finished_matches():
         match.away_score = fixture_data['goals'].get('away')
         match.save()
 
-        if new_status == 'finished' and not was_finished and match.league_id:
-            newly_finished_league_ids.add((match.league_id, match.season))
+        if new_status == 'finished' and not was_finished:
+            newly_finished_match_ids.append(match.id)
+            if match.league_id:
+                newly_finished_league_ids.add((match.league_id, match.season))
 
     for league_id, season in newly_finished_league_ids:
         if league_id and season:
             resync_league_after_match.delay(league_id, season)
+
+    # Per-match player stats are synced synchronously here (not via .delay())
+    # since it's one cheap call per newly-finished match, not per-league.
+    for match_id in newly_finished_match_ids:
+        sync_player_stats_for_match(match_id)
 
     return f"Checked {candidates.count()} candidates, {len(newly_finished_league_ids)} leagues need resync"
 
@@ -63,3 +71,46 @@ def resync_league_after_match(league_id, season):
     sync_standings_for_league(league_id, season)
     sync_player_stats_for_league(league_id, season)
     return f"Resynced league {league_id} season {season} after match completion"
+
+
+def sync_player_stats_for_match(match_id):
+    """Sync per-player stats for a single finished match."""
+    from .models import Match, PlayerMatchStat
+    from .api_football_client import api_football_client
+
+    match = Match.objects.filter(id=match_id).first()
+    if not match:
+        return "Match not found"
+
+    data = api_football_client._get('fixtures/players', params={'fixture': match.api_football_id})
+    if not data:
+        return "No player stats available"
+
+    synced = 0
+    for team_entry in data:
+        team_id = (team_entry.get('team') or {}).get('id')
+        for player_entry in team_entry.get('players', []):
+            player_info = player_entry.get('player') or {}
+            stats_list = player_entry.get('statistics') or []
+            stat = stats_list[0] if stats_list else {}
+            games_info = stat.get('games') or {}
+            goals_info = stat.get('goals') or {}
+            cards_info = stat.get('cards') or {}
+
+            PlayerMatchStat.objects.update_or_create(
+                match=match, player_id=player_info.get('id'),
+                defaults={
+                    'player_name': player_info.get('name', ''),
+                    'team_id': team_id,
+                    'minutes': games_info.get('minutes'),
+                    'rating': games_info.get('rating'),
+                    'position': games_info.get('position'),
+                    'goals': goals_info.get('total') or 0,
+                    'assists': goals_info.get('assists') or 0,
+                    'yellow_cards': cards_info.get('yellow') or 0,
+                    'red_cards': cards_info.get('red') or 0,
+                    'full_stats': stat,
+                }
+            )
+            synced += 1
+    return f"Synced {synced} player stats for match {match_id}"

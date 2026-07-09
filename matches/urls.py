@@ -22,6 +22,9 @@ urlpatterns = [
     path('team/<int:team_id>/', views.TeamMatchesView.as_view(), name='team_matches'),
     path('team/<int:team_id>/profile/', views.TeamProfileView.as_view(), name='team_profile'),
 
+    # Player match history
+    path('player/<int:player_id>/history/', views.PlayerMatchHistoryView.as_view(), name='player_match_history'),
+
     # Match Room
     path('<int:pk>/room/', views.MatchRoomView.as_view(), name='match_room'),
 

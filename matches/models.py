@@ -87,6 +87,29 @@ class MatchEvent(models.Model):
         return f"{self.event_type} - {self.player} {self.minute}'"
 
 
+class PlayerMatchStat(models.Model):
+    match = models.ForeignKey(Match, on_delete=models.CASCADE, related_name='player_stats')
+    player_id = models.IntegerField()
+    player_name = models.CharField(max_length=150)
+    team_id = models.IntegerField()
+    minutes = models.IntegerField(null=True, blank=True)
+    rating = models.CharField(max_length=10, blank=True, null=True)
+    position = models.CharField(max_length=20, blank=True, null=True)
+    goals = models.IntegerField(default=0)
+    assists = models.IntegerField(default=0)
+    yellow_cards = models.IntegerField(default=0)
+    red_cards = models.IntegerField(default=0)
+    full_stats = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('match', 'player_id')
+        ordering = ['-match__kickoff_time']
+
+    def __str__(self):
+        return f"{self.player_name} - {self.match}"
+
+
 def validate_match_id(match_id):
     """
     Shared validation used by both chat (REST + WebSocket) and feed
