@@ -37,3 +37,18 @@ class Player(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.team_name})"
+
+
+class Country(models.Model):
+    """
+    Lookup table synced from API-Football's /countries endpoint — used to
+    resolve a flag image for any Player.nationality. Reusing League's
+    country_flag data only covers countries we've synced leagues for (~62%
+    of real player nationalities); this covers all countries regardless.
+    """
+    name = models.CharField(max_length=100, unique=True)
+    code = models.CharField(max_length=10, blank=True, null=True)
+    flag = models.URLField(blank=True, null=True)
+
+    def __str__(self):
+        return self.name
