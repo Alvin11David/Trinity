@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Player
+from .models import Player, Country
 
 
 class PlayerSerializer(serializers.ModelSerializer):
@@ -11,3 +11,9 @@ class PlayerSerializer(serializers.ModelSerializer):
             'nationality', 'birth_date', 'birth_place', 'height', 'weight',
             'injured', 'statistics', 'updated_at'
         ]
+
+
+class CountrySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Country
+        fields = ['id', 'name', 'code', 'flag']

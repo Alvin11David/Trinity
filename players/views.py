@@ -3,8 +3,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from matches.api_football_client import api_football_client
-from .models import Player
-from .serializers import PlayerSerializer
+from .models import Player, Country
+from .serializers import PlayerSerializer, CountrySerializer
 
 
 class SyncPlayersView(APIView):
@@ -101,3 +101,38 @@ class TeamSquadView(generics.ListAPIView):
         if player_id:
             queryset = queryset.filter(api_football_id=player_id)
         return queryset
+
+
+class SyncCountriesView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        data = api_football_client.get_countries()
+
+        if not data:
+            return Response(
+                {'error': 'Could not fetch countries from API-Football.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        updated_count = 0
+        for entry in data:
+            name = entry.get('name')
+            if not name:
+                continue
+            Country.objects.update_or_create(
+                name=name,
+                defaults={
+                    'code': entry.get('code'),
+                    'flag': entry.get('flag'),
+                }
+            )
+            updated_count += 1
+
+        return Response({'status': 'synced', 'updated_count': updated_count})
+
+
+class CountryListView(generics.ListAPIView):
+    serializer_class = CountrySerializer
+    permission_classes = [permissions.IsAuthenticated]
+    queryset = Country.objects.all()
