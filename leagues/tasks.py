@@ -229,3 +229,31 @@ def sync_next_batch_of_teams(batch_size=20):
             results.append(f"{status_row.team_name}: ERROR - {str(e)}")
 
     return f"Processed {len(pending)} teams: " + "; ".join(results)
+
+
+@shared_task
+def sync_team_statistics_for_league(league_id, season):
+    """Sync TeamStatistics for every team in a league/season."""
+    from .models import LeagueTeamSyncStatus, TeamStatistics
+    from matches.api_football_client import api_football_client
+
+    teams = LeagueTeamSyncStatus.objects.filter(league_id=league_id, season=season)
+    synced = 0
+
+    for team_row in teams:
+        data = api_football_client.get_team_statistics(league_id=league_id, team_id=team_row.team_id, season=season)
+        if not data:
+            continue
+        team_info = data.get('team') or {}
+        TeamStatistics.objects.update_or_create(
+            league_id=league_id, team_id=team_row.team_id, season=season,
+            defaults={
+                'team_name': team_info.get('name', team_row.team_name),
+                'team_logo': team_info.get('logo'),
+                'form': data.get('form') or '',
+                'data': data,
+            }
+        )
+        synced += 1
+
+    return f"Synced TeamStatistics for {synced} teams in league {league_id}"

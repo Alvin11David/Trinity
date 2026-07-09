@@ -9,6 +9,7 @@ urlpatterns = [
     path('player-stats/', views.PlayerLeagueStatsView.as_view(), name='player_stats'),
 
     path('team-stats/sync/', views.SyncTeamStatisticsView.as_view(), name='sync_team_stats'),
+    path('team-stats/leaderboard/', views.TeamStatsLeaderboardView.as_view(), name='team_stats_leaderboard'),
     path('team-stats/', views.TeamStatisticsView.as_view(), name='team_stats'),
 
     path('sync/', views.SyncLeaguesView.as_view(), name='sync_leagues'),

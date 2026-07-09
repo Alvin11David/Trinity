@@ -143,6 +143,17 @@ class TeamStatisticsView(generics.RetrieveAPIView):
         return get_object_or_404(TeamStatistics, league_id=league_id, team_id=team_id, season=season)
 
 
+class TeamStatsLeaderboardView(generics.ListAPIView):
+    serializer_class = TeamStatisticsSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        from .models import TeamStatistics
+        league_id = self.request.query_params.get('league_id')
+        season = self.request.query_params.get('season')
+        return TeamStatistics.objects.filter(league_id=league_id, season=season)
+
+
 CORE_LEAGUE_IDS = {39, 140, 135, 78, 61}  # EPL, La Liga, Serie A, Bundesliga, Ligue 1
 
 
