@@ -91,7 +91,13 @@ class TeamSquadView(generics.ListAPIView):
 
     def get_queryset(self):
         team_id = self.request.query_params.get('team_id')
+        player_id = self.request.query_params.get('player_id')
         queryset = Player.objects.all()
         if team_id:
             queryset = queryset.filter(team_id=team_id)
+        # player_id means the API-Football numeric id everywhere else in this
+        # system (PlayerLeagueStat.player_id, PlayerMatchStat.player_id) —
+        # match that convention, not the Django PK.
+        if player_id:
+            queryset = queryset.filter(api_football_id=player_id)
         return queryset
