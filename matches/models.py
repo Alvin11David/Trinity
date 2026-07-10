@@ -79,6 +79,7 @@ class MatchEvent(models.Model):
     player = models.CharField(max_length=100, blank=True)
     minute = models.IntegerField()
     detail = models.CharField(max_length=200, blank=True)
+    assist_player = models.CharField(max_length=100, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
