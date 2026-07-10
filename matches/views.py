@@ -3,8 +3,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from .models import Match, MatchRoom, MatchEvent, PlayerMatchStat, MatchOdds
-from .serializers import MatchSerializer, MatchRoomSerializer, MatchCardSerializer, PlayerMatchStatSerializer, MatchOddsSerializer
+from .models import Match, MatchRoom, MatchEvent, PlayerMatchStat, MatchOdds, MatchLineup
+from .serializers import MatchSerializer, MatchRoomSerializer, MatchCardSerializer, PlayerMatchStatSerializer, MatchOddsSerializer, MatchLineupSerializer
 from .winnie_client import winnie_client
 from chat.models import Conversation, Membership
 
