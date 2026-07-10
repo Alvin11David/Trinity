@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Match, MatchRoom, MatchEvent, PlayerMatchStat
+from .models import Match, MatchRoom, MatchEvent, PlayerMatchStat, MatchOdds
 
 
 class MatchEventSerializer(serializers.ModelSerializer):
@@ -80,3 +80,9 @@ class PlayerMatchStatSerializer(serializers.ModelSerializer):
             'home_score': match.home_score,
             'away_score': match.away_score,
         }
+
+
+class MatchOddsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MatchOdds
+        fields = ['id', 'match', 'bookmaker_name', 'data', 'updated_at']
