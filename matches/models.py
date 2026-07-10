@@ -70,6 +70,7 @@ class MatchEvent(models.Model):
         ('red_card', 'Red Card'),
         ('substitution', 'Substitution'),
         ('var', 'VAR Decision'),
+        ('other', 'Other'),
     ]
 
     match = models.ForeignKey(Match, on_delete=models.CASCADE, related_name='events')
