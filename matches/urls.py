@@ -9,6 +9,7 @@ urlpatterns = [
     path('fixtures/sync/', views.SyncFixturesView.as_view(), name='sync_fixtures'),
 
     path('<int:pk>/', views.MatchDetailView.as_view(), name='match_detail'),
+    path('<int:match_id>/odds/', views.MatchOddsView.as_view(), name='match_odds'),
 
     path('cards/batch/', views.MatchCardBatchView.as_view(), name='match_cards_batch'),
 

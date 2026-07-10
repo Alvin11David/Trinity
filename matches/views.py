@@ -3,8 +3,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from .models import Match, MatchRoom, MatchEvent, PlayerMatchStat
-from .serializers import MatchSerializer, MatchRoomSerializer, MatchCardSerializer, PlayerMatchStatSerializer
+from .models import Match, MatchRoom, MatchEvent, PlayerMatchStat, MatchOdds
+from .serializers import MatchSerializer, MatchRoomSerializer, MatchCardSerializer, PlayerMatchStatSerializer, MatchOddsSerializer
 from .winnie_client import winnie_client
 from chat.models import Conversation, Membership
 
@@ -195,6 +195,20 @@ class MatchCardBatchView(APIView):
 
         matches = Match.objects.filter(id__in=match_ids)
         serializer = MatchCardSerializer(matches, many=True)
+        return Response(serializer.data)
+
+
+class MatchOddsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, match_id):
+        odds = MatchOdds.objects.filter(match_id=match_id).first()
+        if not odds:
+            return Response(
+                {'detail': 'Odds not yet available for this match.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        serializer = MatchOddsSerializer(odds)
         return Response(serializer.data)
 
 
