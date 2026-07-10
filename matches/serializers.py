@@ -5,7 +5,7 @@ from .models import Match, MatchRoom, MatchEvent, PlayerMatchStat, MatchOdds, Ma
 class MatchEventSerializer(serializers.ModelSerializer):
     class Meta:
         model = MatchEvent
-        fields = ['id', 'event_type', 'team', 'player', 'minute', 'detail', 'created_at']
+        fields = ['id', 'event_type', 'team', 'player', 'minute', 'detail', 'assist_player', 'created_at']
 
 
 class MatchSerializer(serializers.ModelSerializer):
