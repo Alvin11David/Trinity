@@ -208,7 +208,12 @@ def sync_match_events(match_id):
             event_type = 'red_card'
         player_info = event.get('player') or {}
         team_info = event.get('team') or {}
-        MatchEvent.objects.get_or_create(
+        assist_info = event.get('assist') or {}
+        # update_or_create (not get_or_create) so re-running this sync
+        # refreshes assist_player/team/detail on rows that already exist,
+        # rather than silently leaving them stale — needed for backfilling
+        # assist data onto matches synced before this field existed.
+        MatchEvent.objects.update_or_create(
             match=match,
             event_type=event_type,
             player=player_info.get('name', ''),
@@ -216,6 +221,7 @@ def sync_match_events(match_id):
             defaults={
                 'team': team_info.get('name', ''),
                 'detail': event.get('detail', ''),
+                'assist_player': assist_info.get('name'),
             }
         )
         synced += 1
