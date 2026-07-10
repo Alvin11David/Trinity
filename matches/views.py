@@ -198,6 +198,19 @@ class MatchCardBatchView(APIView):
         return Response(serializer.data)
 
 
+class MatchStatisticsView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, match_id):
+        match = get_object_or_404(Match, pk=match_id)
+        if not match.live_stats:
+            return Response(
+                {'detail': 'Statistics not yet available for this match.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        return Response({'match': match.id, 'statistics': match.live_stats, 'updated_at': match.updated_at})
+
+
 class MatchOddsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
