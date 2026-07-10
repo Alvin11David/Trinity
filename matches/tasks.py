@@ -114,3 +114,32 @@ def sync_player_stats_for_match(match_id):
             )
             synced += 1
     return f"Synced {synced} player stats for match {match_id}"
+
+
+def sync_odds_for_match(match_id):
+    """
+    Sync pre-match odds for a single fixture. Not a Celery task since it's
+    meant to be called on-demand (e.g. when a user opens the Odds tab),
+    same convention as sync_player_stats_for_match.
+
+    NOTE: API-Football's /odds endpoint only retains data for fixtures within
+    a ~7-day window before kickoff, so this will return "No odds available"
+    for anything outside that window even if the match itself is synced.
+    """
+    from .models import Match, MatchOdds
+    from .api_football_client import api_football_client
+
+    match = Match.objects.filter(id=match_id).first()
+    if not match:
+        return "Match not found"
+
+    data = api_football_client._get('odds', params={'fixture': match.api_football_id})
+    if not data:
+        return "No odds available (outside 7-day window or not yet posted)"
+
+    bookmaker_data = data[0].get('bookmakers', [{}])[0] if data else {}
+    MatchOdds.objects.update_or_create(
+        match=match,
+        defaults={'bookmaker_name': bookmaker_data.get('name', ''), 'data': data[0]}
+    )
+    return f"Synced odds for match {match_id}"
