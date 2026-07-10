@@ -146,6 +146,22 @@ class PlayerMatchHistoryView(generics.ListAPIView):
         ).select_related('match').order_by('-match__kickoff_time')
 
 
+class MatchPlayerStatsView(generics.ListAPIView):
+    """
+    Full per-player stat line (including rating) for both teams in one
+    match — used for the Player of the Match card and stats-tab rating
+    leaderboard. Ordering is by team/player name only; the client derives
+    "highest rated" itself since `rating` is a nullable string field
+    (bench players who didn't play have no rating).
+    """
+    serializer_class = PlayerMatchStatSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        match_id = self.kwargs['match_id']
+        return PlayerMatchStat.objects.filter(match_id=match_id).order_by('team_id', 'player_name')
+
+
 class SyncPredictionsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 

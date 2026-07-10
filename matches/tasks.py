@@ -56,13 +56,17 @@ def check_for_finished_matches():
         if league_id and season:
             resync_league_after_match.delay(league_id, season)
 
-    # Per-match player stats, team statistics, and events are synced
-    # synchronously here (not via .delay()) since it's one cheap call each
-    # per newly-finished match, not per-league.
+    # Per-match player stats, team statistics, events, and lineups are
+    # synced synchronously here (not via .delay()) since it's one cheap call
+    # each per newly-finished match, not per-league. Lineup was previously
+    # missing from this list — it's posted before/at kickoff, so a finished
+    # match should always have it available; it just needs one call, same as
+    # the others (unlike odds, which is legitimately pre-match-only).
     for match_id in newly_finished_match_ids:
         sync_player_stats_for_match(match_id)
         sync_match_statistics(match_id)
         sync_match_events(match_id)
+        sync_lineup_for_match(match_id)
 
     return f"Checked {candidates.count()} candidates, {len(newly_finished_league_ids)} leagues need resync"
 
