@@ -10,6 +10,9 @@ urlpatterns = [
 
     path('<int:pk>/', views.MatchDetailView.as_view(), name='match_detail'),
     path('<int:match_id>/odds/', views.MatchOddsView.as_view(), name='match_odds'),
+    path('<int:match_id>/lineup/', views.MatchLineupView.as_view(), name='match_lineup'),
+    path('<int:match_id>/h2h/', views.MatchH2HView.as_view(), name='match_h2h'),
+    path('<int:match_id>/preview/', views.MatchPreviewView.as_view(), name='match_preview'),
 
     path('cards/batch/', views.MatchCardBatchView.as_view(), name='match_cards_batch'),
 

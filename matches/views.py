@@ -212,6 +212,114 @@ class MatchOddsView(APIView):
         return Response(serializer.data)
 
 
+class MatchLineupView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, match_id):
+        lineup = MatchLineup.objects.filter(match_id=match_id).first()
+        if not lineup:
+            return Response(
+                {'detail': 'Lineup not yet available for this match.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        serializer = MatchLineupSerializer(lineup)
+        return Response(serializer.data)
+
+
+def _team_result(match, team_id):
+    """W/D/L for team_id in a finished match, or None if team_id wasn't in it."""
+    if match.home_score is None or match.away_score is None:
+        return None
+    if match.home_team_id == team_id:
+        if match.home_score > match.away_score:
+            return 'W'
+        if match.home_score < match.away_score:
+            return 'L'
+        return 'D'
+    if match.away_team_id == team_id:
+        if match.away_score > match.home_score:
+            return 'W'
+        if match.away_score < match.home_score:
+            return 'L'
+        return 'D'
+    return None
+
+
+class MatchH2HView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, match_id):
+        from django.db.models import Q
+
+        match = get_object_or_404(Match, pk=match_id)
+        team1_id, team2_id = match.home_team_id, match.away_team_id
+
+        if not team1_id or not team2_id:
+            return Response({'detail': 'Match is missing team IDs.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        meetings = Match.objects.filter(
+            Q(home_team_id=team1_id, away_team_id=team2_id) | Q(home_team_id=team2_id, away_team_id=team1_id),
+            status='finished'
+        ).exclude(pk=match.pk).order_by('-kickoff_time')[:10]
+
+        team1_wins = draws = team2_wins = 0
+        for m in meetings:
+            result = _team_result(m, team1_id)
+            if result == 'W':
+                team1_wins += 1
+            elif result == 'L':
+                team2_wins += 1
+            elif result == 'D':
+                draws += 1
+
+        serializer = MatchSerializer(meetings, many=True)
+        return Response({
+            'summary': {
+                'team1_id': team1_id,
+                'team2_id': team2_id,
+                'team1_wins': team1_wins,
+                'draws': draws,
+                'team2_wins': team2_wins,
+            },
+            'matches': serializer.data,
+        })
+
+
+class MatchPreviewView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, match_id):
+        match = get_object_or_404(Match, pk=match_id)
+
+        def recent_form(team_id):
+            from django.db.models import Q
+            if not team_id:
+                return []
+            recent = Match.objects.filter(
+                Q(home_team_id=team_id) | Q(away_team_id=team_id),
+                status='finished'
+            ).exclude(pk=match.pk).order_by('-kickoff_time')[:5]
+            return [
+                {
+                    'match_id': m.id,
+                    'result': _team_result(m, team_id),
+                    'opponent': m.away_team if m.home_team_id == team_id else m.home_team,
+                    'home_score': m.home_score,
+                    'away_score': m.away_score,
+                    'kickoff_time': m.kickoff_time,
+                }
+                for m in recent
+            ]
+
+        return Response({
+            'venue_name': match.venue_name,
+            'venue_city': match.venue_city,
+            'referee': match.referee,
+            'home_team_form': recent_form(match.home_team_id),
+            'away_team_form': recent_form(match.away_team_id),
+        })
+
+
 class SyncFixturesView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
