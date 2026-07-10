@@ -110,6 +110,16 @@ class PlayerMatchStat(models.Model):
         return f"{self.player_name} - {self.match}"
 
 
+class MatchOdds(models.Model):
+    match = models.OneToOneField(Match, on_delete=models.CASCADE, related_name='odds')
+    bookmaker_name = models.CharField(max_length=100, blank=True)
+    data = models.JSONField()
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Odds for {self.match}"
+
+
 def validate_match_id(match_id):
     """
     Shared validation used by both chat (REST + WebSocket) and feed
