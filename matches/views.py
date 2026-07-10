@@ -16,11 +16,17 @@ class MatchListView(generics.ListAPIView):
         queryset = Match.objects.all().prefetch_related('events')
         league_id = self.request.query_params.get('league_id')
         status_filter = self.request.query_params.get('status')
+        date = self.request.query_params.get('date')  # YYYY-MM-DD
+        season = self.request.query_params.get('season')
         if league_id:
             queryset = queryset.filter(league_id=league_id)
         if status_filter:
             queryset = queryset.filter(status=status_filter)
-        return queryset
+        if date:
+            queryset = queryset.filter(kickoff_time__date=date)
+        if season:
+            queryset = queryset.filter(season=season)
+        return queryset.order_by('kickoff_time')
 
 
 class MatchDetailView(generics.RetrieveAPIView):
