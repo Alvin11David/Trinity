@@ -120,6 +120,15 @@ class MatchOdds(models.Model):
         return f"Odds for {self.match}"
 
 
+class MatchLineup(models.Model):
+    match = models.OneToOneField(Match, on_delete=models.CASCADE, related_name='lineup')
+    data = models.JSONField()  # full lineups array (both teams)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Lineup for {self.match}"
+
+
 def validate_match_id(match_id):
     """
     Shared validation used by both chat (REST + WebSocket) and feed

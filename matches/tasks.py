@@ -143,3 +143,27 @@ def sync_odds_for_match(match_id):
         defaults={'bookmaker_name': bookmaker_data.get('name', ''), 'data': data[0]}
     )
     return f"Synced odds for match {match_id}"
+
+
+def sync_lineup_for_match(match_id):
+    """
+    Sync starting XI/subs/formation for a single fixture. Not a Celery task
+    since it's meant to be called on-demand (e.g. when a user opens the
+    Lineup tab), same convention as sync_odds_for_match.
+
+    NOTE: API-Football only posts lineups shortly before kickoff (~30-60 min),
+    so this will return "No lineup available yet" for anything earlier.
+    """
+    from .models import Match, MatchLineup
+    from .api_football_client import api_football_client
+
+    match = Match.objects.filter(id=match_id).first()
+    if not match:
+        return "Match not found"
+
+    data = api_football_client._get('fixtures/lineups', params={'fixture': match.api_football_id})
+    if not data:
+        return "No lineup available yet"
+
+    MatchLineup.objects.update_or_create(match=match, defaults={'data': data})
+    return f"Synced lineup for match {match_id}"
