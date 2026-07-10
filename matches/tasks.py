@@ -167,3 +167,53 @@ def sync_lineup_for_match(match_id):
 
     MatchLineup.objects.update_or_create(match=match, defaults={'data': data})
     return f"Synced lineup for match {match_id}"
+
+
+def sync_match_statistics(match_id):
+    """Sync team-level match statistics (shots, possession, etc.) for a finished match."""
+    from .models import Match
+    from .api_football_client import api_football_client
+
+    match = Match.objects.filter(id=match_id).first()
+    if not match:
+        return "Match not found"
+    data = api_football_client._get('fixtures/statistics', params={'fixture': match.api_football_id})
+    if not data:
+        return "No statistics available"
+    match.live_stats = data
+    match.save()
+    return f"Synced statistics for match {match_id}"
+
+
+def sync_match_events(match_id):
+    """Sync goal/card/substitution events for a finished match."""
+    from .models import Match, MatchEvent
+    from .api_football_client import api_football_client
+
+    match = Match.objects.filter(id=match_id).first()
+    if not match:
+        return "Match not found"
+    data = api_football_client._get('fixtures/events', params={'fixture': match.api_football_id})
+    if not data:
+        return "No events available"
+
+    TYPE_MAP = {'Goal': 'goal', 'Card': 'yellow_card', 'subst': 'substitution', 'Var': 'var'}
+    synced = 0
+    for event in data:
+        event_type = TYPE_MAP.get(event['type'], 'other')
+        if event['type'] == 'Card' and event.get('detail') == 'Red Card':
+            event_type = 'red_card'
+        player_info = event.get('player') or {}
+        team_info = event.get('team') or {}
+        MatchEvent.objects.get_or_create(
+            match=match,
+            event_type=event_type,
+            player=player_info.get('name', ''),
+            minute=(event.get('time') or {}).get('elapsed', 0),
+            defaults={
+                'team': team_info.get('name', ''),
+                'detail': event.get('detail', ''),
+            }
+        )
+        synced += 1
+    return f"Synced {synced} events for match {match_id}"
