@@ -9,6 +9,7 @@ urlpatterns = [
     path('fixtures/sync/', views.SyncFixturesView.as_view(), name='sync_fixtures'),
 
     path('<int:pk>/', views.MatchDetailView.as_view(), name='match_detail'),
+    path('<int:match_id>/statistics/', views.MatchStatisticsView.as_view(), name='match_statistics'),
     path('<int:match_id>/odds/', views.MatchOddsView.as_view(), name='match_odds'),
     path('<int:match_id>/lineup/', views.MatchLineupView.as_view(), name='match_lineup'),
     path('<int:match_id>/h2h/', views.MatchH2HView.as_view(), name='match_h2h'),
