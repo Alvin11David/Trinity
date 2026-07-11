@@ -3,10 +3,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 
-from .models import LeagueStanding, League, UserLeagueFollow
+from .models import LeagueStanding, League, UserLeagueFollow, UserTeamFollow
 from .serializers import (
     LeagueStandingSerializer, PlayerLeagueStatSerializer,
-    TeamStatisticsSerializer, LeagueSerializer
+    TeamStatisticsSerializer, LeagueSerializer, UserTeamFollowSerializer
 )
 
 
@@ -242,3 +242,31 @@ class FollowedLeaguesView(generics.ListAPIView):
 
     def get_serializer_context(self):
         return {'request': self.request}
+
+
+class FollowTeamView(APIView):
+    """Toggle following a team (CLAUDE.md Step 8 prerequisite). Denormalized:
+    the client passes team_name/team_logo (no Team model to look them up from).
+    On follow it stores/refreshes them; the toggle keys on team_id."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, team_id):
+        existing = UserTeamFollow.objects.filter(user=request.user, team_id=team_id).first()
+        if existing:
+            existing.delete()
+            return Response({'status': 'unfollowed'})
+        UserTeamFollow.objects.create(
+            user=request.user,
+            team_id=team_id,
+            team_name=request.data.get('team_name', ''),
+            team_logo=request.data.get('team_logo'),
+        )
+        return Response({'status': 'followed'})
+
+
+class FollowedTeamsView(generics.ListAPIView):
+    serializer_class = UserTeamFollowSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return UserTeamFollow.objects.filter(user=self.request.user)

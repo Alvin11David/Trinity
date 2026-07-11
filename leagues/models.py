@@ -105,6 +105,32 @@ class UserLeagueFollow(models.Model):
         return f"{self.user.username} follows {self.league.name}"
 
 
+class UserTeamFollow(models.Model):
+    """
+    A user following a football team. Denormalized (team_id/team_name/logo) —
+    there is NO Team model anywhere in the codebase; Match/TeamStatistics/
+    LeagueStanding all carry denormalized team_id/team_name, and this mirrors
+    that convention (Section 38 reconciliation decision).
+
+    Hard prerequisite for notification fan-out (CLAUDE.md 36.4 / Step 8:
+    "followers of either team") and the affinity TEAM tier in Discovery
+    scoring (36.6 / Step 5). Sibling of UserLeagueFollow above.
+    """
+    user = models.ForeignKey('users.User', on_delete=models.CASCADE, related_name='followed_teams')
+    team_id = models.IntegerField()  # API-Football numeric team ID
+    team_name = models.CharField(max_length=100, blank=True)
+    team_logo = models.URLField(blank=True, null=True)
+    order = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'team_id')
+        ordering = ['order', 'created_at']
+
+    def __str__(self):
+        return f"{self.user.username} follows team {self.team_name or self.team_id}"
+
+
 class LeagueTeamSyncStatus(models.Model):
     league_id = models.IntegerField()
     season = models.IntegerField()

@@ -1,5 +1,11 @@
 from rest_framework import serializers
-from .models import LeagueStanding, PlayerLeagueStat, TeamStatistics, League
+from .models import LeagueStanding, PlayerLeagueStat, TeamStatistics, League, UserTeamFollow
+
+
+class UserTeamFollowSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserTeamFollow
+        fields = ['id', 'team_id', 'team_name', 'team_logo', 'order', 'created_at']
 
 
 class LeagueStandingSerializer(serializers.ModelSerializer):

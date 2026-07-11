@@ -17,5 +17,10 @@ urlpatterns = [
     path('<int:league_id>/follow/', views.FollowLeagueView.as_view(), name='follow_league'),
     path('following/', views.FollowedLeaguesView.as_view(), name='followed_leagues'),
 
+    # Team follow (Step 8 prerequisite). Literal 'teams/' prefix, so no clash
+    # with the <int:league_id> route above.
+    path('teams/<int:team_id>/follow/', views.FollowTeamView.as_view(), name='follow_team'),
+    path('teams/following/', views.FollowedTeamsView.as_view(), name='followed_teams'),
+
     path('', views.LeagueListView.as_view(), name='league_list'),
 ]
