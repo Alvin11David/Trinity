@@ -141,3 +141,26 @@ WINNIE_API_BASE_URL = os.getenv('WINNIE_API_BASE_URL', 'http://127.0.0.1:8000')
 
 API_FOOTBALL_BASE_URL = 'https://v3.football.api-sports.io'
 API_FOOTBALL_KEY = os.getenv('API_FOOTBALL_KEY')
+
+# --- Feed media pipeline (CLAUDE.md 36.9 / Step 4) ---
+# Video → Mux direct upload (phone uploads straight to Mux, never through
+# Django); a webhook flips the post processing → ready. Photos → S3 presigned
+# PUT (direct-to-storage, same "no raw bytes through Django" principle),
+# finalized server-side with Pillow. All credentials are optional at import
+# time — the media endpoints return a clear 503 when a provider isn't
+# configured, so the rest of the app runs without them.
+MUX_TOKEN_ID = os.getenv('MUX_TOKEN_ID')
+MUX_TOKEN_SECRET = os.getenv('MUX_TOKEN_SECRET')
+MUX_WEBHOOK_SECRET = os.getenv('MUX_WEBHOOK_SECRET')
+MUX_API_BASE_URL = 'https://api.mux.com'
+# Max seconds of video accepted per upload (bounds Mux encoding cost — 36.10
+# flagged this as undecided; 140s chosen as a sensible X-like default).
+MUX_MAX_VIDEO_DURATION = int(os.getenv('MUX_MAX_VIDEO_DURATION', '140'))
+
+AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
+AWS_S3_REGION = os.getenv('AWS_S3_REGION', 'us-east-1')
+AWS_S3_BUCKET = os.getenv('AWS_S3_BUCKET')
+# Public base URL used to build the displayable photo URL after upload. Defaults
+# to the standard virtual-hosted S3 URL; override if fronted by a CDN.
+AWS_S3_PUBLIC_BASE_URL = os.getenv('AWS_S3_PUBLIC_BASE_URL')
