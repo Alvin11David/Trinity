@@ -56,3 +56,18 @@ def create_match_recap_post(match_id):
         defaults={'content': ''},  # content derived at render time, not stored
     )
     return post if created else None
+
+
+def recompute_post_media_state(post):
+    """Aggregate a Post's media readiness (CLAUDE.md 36.9): 'processing' while
+    any attached media is not yet 'ready' (a Mux video mid-transcode), else
+    'ready'. Called after a photo is finalized or a Mux webhook fires."""
+    from .models import Post
+
+    has_pending = post.media.exclude(status='ready').exists()
+    new_state = 'processing' if has_pending else 'ready'
+    if post.media_state != new_state:
+        post.media_state = new_state
+        post.save(update_fields=['media_state', 'updated_at'])
+    return new_state
+
