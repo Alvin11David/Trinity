@@ -75,6 +75,11 @@ def check_for_finished_matches():
         except Exception as exc:  # pragma: no cover - defensive
             print(f"recap post creation failed for match {match_id}: {exc}")
 
+        # Notifications: full-time (FT) fan-out to both teams' followers
+        # (CLAUDE.md 36.4 granularity / Step 8). Async, off the poller thread.
+        from notifications.tasks import fan_out_match_final_notification
+        fan_out_match_final_notification.delay(match_id)
+
     return f"Checked {candidates.count()} candidates, {len(newly_finished_league_ids)} leagues need resync"
 
 

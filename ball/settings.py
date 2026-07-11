@@ -122,6 +122,12 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'feed.tasks.compute_trending',
         'schedule': crontab(minute='*/20'),
     },
+    # Live match-event poller feeding WS broadcasts + notification fan-out
+    # (CLAUDE.md 36.4 / Step 8). ~60s, distinct from the 3-min finish check.
+    'sync-live-match-events': {
+        'task': 'matches.tasks.sync_live_match_events',
+        'schedule': 60.0,
+    },
 }
 
 AUTH_USER_MODEL = 'users.User'

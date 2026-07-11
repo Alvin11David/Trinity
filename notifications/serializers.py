@@ -1,6 +1,20 @@
 from rest_framework import serializers
-from .models import Notification, FCMToken
+from .models import Notification, FCMToken, ExpoPushToken
 from users.serializers import UserSerializer
+
+
+class ExpoPushTokenSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ExpoPushToken
+        fields = ['id', 'token', 'device_type', 'created_at']
+
+    def create(self, validated_data):
+        validated_data['user'] = self.context['request'].user
+        token, _ = ExpoPushToken.objects.update_or_create(
+            token=validated_data['token'],
+            defaults=validated_data,
+        )
+        return token
 
 
 class NotificationSerializer(serializers.ModelSerializer):

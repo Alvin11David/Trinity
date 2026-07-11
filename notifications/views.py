@@ -2,7 +2,7 @@ from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from .models import Notification, FCMToken
-from .serializers import NotificationSerializer, FCMTokenSerializer
+from .serializers import NotificationSerializer, FCMTokenSerializer, ExpoPushTokenSerializer
 
 
 class NotificationListView(generics.ListAPIView):
@@ -64,6 +64,16 @@ class UnreadCountView(APIView):
 
 class FCMTokenView(generics.CreateAPIView):
     serializer_class = FCMTokenSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_context(self):
+        return {'request': self.request}
+
+
+class ExpoPushTokenView(generics.CreateAPIView):
+    """Register an Expo push token for the current user (CLAUDE.md 36.4 / Step
+    8). Distinct from FCMTokenView (legacy raw device tokens)."""
+    serializer_class = ExpoPushTokenSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_serializer_context(self):

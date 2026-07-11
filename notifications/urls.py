@@ -9,6 +9,7 @@ urlpatterns = [
     path('<int:pk>/read/', views.MarkNotificationReadView.as_view(), name='mark_read'),
     path('read-all/', views.MarkAllReadView.as_view(), name='mark_all_read'),
 
-    # FCM
+    # Push token registration
     path('fcm/register/', views.FCMTokenView.as_view(), name='fcm_register'),
+    path('expo/register/', views.ExpoPushTokenView.as_view(), name='expo_register'),
 ]
