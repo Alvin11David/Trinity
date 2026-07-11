@@ -25,6 +25,9 @@ urlpatterns = [
     # Search (Step 6)
     path('search/', views.SearchView.as_view(), name='search'),
 
+    # Autocomplete / typeahead + Trends surface (Step 9 / 37.5)
+    path('autocomplete/', views.AutocompleteView.as_view(), name='autocomplete'),
+
     # User posts
     path('users/<str:username>/posts/', views.UserPostsView.as_view(), name='user_posts'),
 ]

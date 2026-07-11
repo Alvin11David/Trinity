@@ -465,3 +465,51 @@ class SearchView(APIView):
             .order_by('-sim', 'kickoff_time')[:limit]
         )
         return MatchCardSerializer(matches, many=True).data
+
+
+# --------------------------------------------------------------------------- #
+# Autocomplete / typeahead (CLAUDE.md 37.5 / Step 9)
+# --------------------------------------------------------------------------- #
+
+class AutocompleteView(APIView):
+    """Deliberately CHEAP and separate from SearchView — this fires on every
+    keystroke, so it must NOT run the ranked search pipeline (37.5). It does a
+    pg_trgm username prefix match plus a prefix filter over the cached trending
+    hashtag list (Step 7). Empty query returns the top trending hashtags, which
+    also feeds the Trends surface (37.4: zero new endpoints beyond typeahead)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from django.core.cache import cache
+        from .scoring import TRENDING_HASHTAGS_KEY
+
+        q = (request.query_params.get('q') or '').strip()
+        try:
+            limit = min(int(request.query_params.get('limit', 8)), 20)
+        except (TypeError, ValueError):
+            limit = 8
+
+        all_tags = cache.get(TRENDING_HASHTAGS_KEY) or []
+
+        # Empty prefix → top trending hashtags (Trends surface / initial state).
+        if not q:
+            return Response({'query': q, 'users': [], 'hashtags': all_tags[:limit]})
+
+        prefix = q.lstrip('#').lower()
+        hashtags = [t for t in all_tags if t['tag'].startswith(prefix)][:limit]
+
+        users = []
+        if not q.startswith('#'):
+            from django.contrib.postgres.search import TrigramSimilarity
+            from users.models import User
+            user_qs = (
+                User.objects.filter(username__istartswith=q)
+                .annotate(sim=TrigramSimilarity('username', q))
+                .order_by('-sim')[:limit]
+            )
+            users = [
+                {'id': u.id, 'username': u.username, 'avatar': u.avatar}
+                for u in user_qs
+            ]
+
+        return Response({'query': q, 'users': users, 'hashtags': hashtags})
