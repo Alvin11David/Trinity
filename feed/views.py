@@ -2,12 +2,23 @@ from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
-from .models import Post, Reaction, Poll, PollOption, PollVote
-from .serializers import PostSerializer, PostCreateSerializer, PollSerializer
+from .models import Post, Reaction
+from .serializers import PostSerializer, PostCreateSerializer
 from users.models import Follow
 
 
+# Shared queryset shaping so every feed endpoint fetches the same related rows
+# and can't drift (the duplication that caused earlier sync bugs — Section 15).
+def _posts_base_qs():
+    return Post.objects.select_related('author', 'match').prefetch_related(
+        'reactions', 'reposts', 'comments', 'media',
+    )
+
+
 class FeedView(generics.ListAPIView):
+    """Following feed (CLAUDE.md 36.3): posts by accounts the viewer follows,
+    reverse-chronological. Verified during the Section 38 reconciliation to
+    already match the Following spec — kept, not rebuilt."""
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -15,19 +26,18 @@ class FeedView(generics.ListAPIView):
         following_ids = Follow.objects.filter(
             follower=self.request.user
         ).values_list('following_id', flat=True)
-        return Post.objects.filter(
-            author_id__in=following_ids
-        ).select_related('author', 'poll').prefetch_related('reactions', 'reposts')
+        return _posts_base_qs().filter(author_id__in=following_ids)
 
 
 class GlobalFeedView(generics.ListAPIView):
+    """For You feed (CLAUDE.md 36.3/36.6). Base endpoint; Step 5 layers the
+    affinity/trending/social-proof ranking on top of this same view rather than
+    introducing a new endpoint."""
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Post.objects.all().select_related(
-            'author', 'poll'
-        ).prefetch_related('reactions', 'reposts')
+        return _posts_base_qs().all()
 
 
 class PostCreateView(generics.CreateAPIView):
@@ -36,7 +46,7 @@ class PostCreateView(generics.CreateAPIView):
 
 
 class PostDetailView(generics.RetrieveDestroyAPIView):
-    queryset = Post.objects.all()
+    queryset = _posts_base_qs().all()
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -74,28 +84,10 @@ class ReactionView(APIView):
         return Response({'status': 'reacted', 'reaction_type': reaction_type})
 
 
-class PollVoteView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request, pk):
-        poll = get_object_or_404(Poll, pk=pk)
-        option_id = request.data.get('option_id')
-        option = get_object_or_404(PollOption, pk=option_id, poll=poll)
-        vote, created = PollVote.objects.get_or_create(
-            poll=poll, user=request.user,
-            defaults={'option': option}
-        )
-        if not created:
-            return Response({'error': 'Already voted.'}, status=status.HTTP_400_BAD_REQUEST)
-        return Response({'status': 'voted', 'option': option.text})
-
-
 class UserPostsView(generics.ListAPIView):
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         username = self.kwargs['username']
-        return Post.objects.filter(
-            author__username=username
-        ).select_related('author', 'poll').prefetch_related('reactions', 'reposts')
+        return _posts_base_qs().filter(author__username=username)

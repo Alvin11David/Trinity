@@ -1,25 +1,17 @@
 from rest_framework import serializers
-from .models import Post, Reaction, Poll, PollOption, PollVote
+from .models import Post, PostMedia, Reaction
 from users.serializers import UserSerializer
+from matches.models import Match
 
 
-class PollOptionSerializer(serializers.ModelSerializer):
-    votes_count = serializers.SerializerMethodField()
-
+class PostMediaSerializer(serializers.ModelSerializer):
     class Meta:
-        model = PollOption
-        fields = ['id', 'text', 'votes_count']
-
-    def get_votes_count(self, obj):
-        return obj.votes.count()
-
-
-class PollSerializer(serializers.ModelSerializer):
-    options = PollOptionSerializer(many=True, read_only=True)
-
-    class Meta:
-        model = Poll
-        fields = ['id', 'question', 'options', 'created_at']
+        model = PostMedia
+        fields = [
+            'id', 'media_type', 'status', 'order',
+            'url', 'width', 'height',
+            'mux_playback_id', 'thumbnail_url', 'duration',
+        ]
 
 
 class ReactionSerializer(serializers.ModelSerializer):
@@ -32,16 +24,22 @@ class PostSerializer(serializers.ModelSerializer):
     author = UserSerializer(read_only=True)
     reactions_count = serializers.SerializerMethodField()
     reposts_count = serializers.SerializerMethodField()
-    poll = PollSerializer(read_only=True)
+    comments_count = serializers.SerializerMethodField()
     user_reaction = serializers.SerializerMethodField()
     match_card = serializers.SerializerMethodField()
+    media = PostMediaSerializer(many=True, read_only=True)
+    # Preserve the existing `match_id` key in API output even though the model
+    # field is now a real FK named `match` (attname `match_id`).
+    match_id = serializers.IntegerField(read_only=True)
+    repost_of = serializers.PrimaryKeyRelatedField(read_only=True)
 
     class Meta:
         model = Post
         fields = [
             'id', 'author', 'content', 'post_type', 'match_id',
-            'repost_of', 'reactions_count', 'reposts_count',
-            'poll', 'user_reaction', 'match_card', 'created_at', 'updated_at'
+            'repost_of', 'reactions_count', 'reposts_count', 'comments_count',
+            'user_reaction', 'match_card', 'media', 'media_state',
+            'created_at', 'updated_at',
         ]
 
     def get_reactions_count(self, obj):
@@ -49,6 +47,9 @@ class PostSerializer(serializers.ModelSerializer):
 
     def get_reposts_count(self, obj):
         return obj.reposts.count()
+
+    def get_comments_count(self, obj):
+        return obj.comments.count()
 
     def get_user_reaction(self, obj):
         request = self.context.get('request')
@@ -59,29 +60,30 @@ class PostSerializer(serializers.ModelSerializer):
 
     def get_match_card(self, obj):
         if obj.post_type == 'match_object' and obj.match_id:
-            from matches.models import Match
             from matches.serializers import MatchCardSerializer
-            match = Match.objects.filter(id=obj.match_id).first()
-            if match:
-                return MatchCardSerializer(match).data
+            if obj.match:
+                return MatchCardSerializer(obj.match).data
         return None
 
 
 class PostCreateSerializer(serializers.ModelSerializer):
     content = serializers.CharField(required=False, allow_blank=True, max_length=500)
+    # Accept/emit `match_id` in the request body while writing to the FK.
+    # PrimaryKeyRelatedField also validates the Match exists (replacing the old
+    # manual validate_match_id existence check).
+    match_id = serializers.PrimaryKeyRelatedField(
+        queryset=Match.objects.all(), source='match',
+        required=False, allow_null=True,
+    )
 
     class Meta:
         model = Post
         fields = ['id', 'content', 'post_type', 'match_id', 'repost_of']
 
     def validate(self, data):
-        if data.get('post_type') == 'match_object':
-            match_id = data.get('match_id')
-            if not match_id:
-                raise serializers.ValidationError('match_id is required for match_object posts.')
-            from matches.models import validate_match_id
-            if not validate_match_id(match_id):
-                raise serializers.ValidationError('Invalid match_id — no matching Match found.')
+        post_type = data.get('post_type')
+        if post_type == 'match_object' and not data.get('match'):
+            raise serializers.ValidationError('match_id is required for match_object posts.')
         return data
 
     def create(self, validated_data):
