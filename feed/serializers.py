@@ -55,10 +55,26 @@ class PostSerializer(serializers.ModelSerializer):
         return None
 
     def get_match_card(self, obj):
-        if obj.post_type == 'match_object' and obj.match_id:
+        # For match_object recap posts, the score + goal-scorer names are
+        # DERIVED here from the linked Match and its MatchEvent rows (CLAUDE.md
+        # 36.2 — nothing is stored on the Post). Iterating the prefetched
+        # events in Python (rather than .filter()) reuses the match__events
+        # prefetch and avoids an N+1 across the feed.
+        if obj.post_type == 'match_object' and obj.match_id and obj.match:
             from matches.serializers import MatchCardSerializer
-            if obj.match:
-                return MatchCardSerializer(obj.match).data
+            card = dict(MatchCardSerializer(obj.match).data)
+            card['goal_scorers'] = [
+                {
+                    'team': e.team,
+                    'player': e.player,
+                    'minute': e.minute,
+                    'assist': e.assist_player,
+                    'detail': e.detail,
+                }
+                for e in obj.match.events.all()
+                if e.event_type == 'goal' and 'Missed' not in (e.detail or '')
+            ]
+            return card
         return None
 
 

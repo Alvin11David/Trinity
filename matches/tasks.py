@@ -65,8 +65,15 @@ def check_for_finished_matches():
     for match_id in newly_finished_match_ids:
         sync_player_stats_for_match(match_id)
         sync_match_statistics(match_id)
-        sync_match_events(match_id)
+        sync_match_events(match_id)  # must run before the recap so scorers exist
         sync_lineup_for_match(match_id)
+        # Feed: create the single full-time match_object recap post (CLAUDE.md
+        # 36.2 / Step 2). Guarded so a feed-side failure can't break match sync.
+        try:
+            from feed.services import create_match_recap_post
+            create_match_recap_post(match_id)
+        except Exception as exc:  # pragma: no cover - defensive
+            print(f"recap post creation failed for match {match_id}: {exc}")
 
     return f"Checked {candidates.count()} candidates, {len(newly_finished_league_ids)} leagues need resync"
 
