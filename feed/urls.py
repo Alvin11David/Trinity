@@ -22,6 +22,9 @@ urlpatterns = [
     path('media/<int:pk>/finalize/', views.PhotoFinalizeView.as_view(), name='media_finalize'),
     path('media/mux-webhook/', views.MuxWebhookView.as_view(), name='mux_webhook'),
 
+    # Search (Step 6)
+    path('search/', views.SearchView.as_view(), name='search'),
+
     # User posts
     path('users/<str:username>/posts/', views.UserPostsView.as_view(), name='user_posts'),
 ]

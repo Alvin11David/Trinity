@@ -133,3 +133,67 @@ def log_normalize(values):
     logged = {k: math.log1p(max(v, 0.0)) for k, v in values.items()}
     peak = max(logged.values()) or 1.0
     return {k: v / peak for k, v in logged.items()}
+
+
+def rank_posts(posts, user, now=None):
+    """Score a set of posts for a viewer with the single weighted formula and
+    return them sorted best-first.
+
+    This is the shared ranker used by BOTH the For You feed (36.6, over the
+    3-pool candidate set) and Search's Top tab (37.3, over a text-matched
+    candidate set) — "reuse, not reimplement". Social proof is scoped to the
+    given posts and the viewer's follow-list (reactions + comments + reposts,
+    per the 36.8 fix).
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from users.models import Follow
+    from .models import Reaction, Comment, Post
+
+    posts = list(posts)
+    if not posts:
+        return []
+    if now is None:
+        now = timezone.now()
+
+    followed_leagues = get_followed_league_ids(user)
+    followed_teams = get_followed_team_ids(user)
+    trending = get_trending_scores()
+    post_ids = [p.id for p in posts]
+    follow_ids = list(
+        Follow.objects.filter(follower=user).values_list('following_id', flat=True)
+    )
+
+    engagers = {}  # post_id -> set(follow_user_id)
+    if follow_ids:
+        sp_cutoff = now - timedelta(hours=DiscoveryConfig.SOCIAL_POOL_LOOKBACK_HOURS)
+        for pid, uid in Reaction.objects.filter(
+            user_id__in=follow_ids, post_id__in=post_ids, created_at__gte=sp_cutoff
+        ).values_list('post_id', 'user_id'):
+            engagers.setdefault(pid, set()).add(uid)
+        for pid, uid in Comment.objects.filter(
+            author_id__in=follow_ids, post_id__in=post_ids, created_at__gte=sp_cutoff
+        ).values_list('post_id', 'author_id'):
+            engagers.setdefault(pid, set()).add(uid)
+        for target_pid, uid in Post.objects.filter(
+            author_id__in=follow_ids, repost_of_id__in=post_ids, created_at__gte=sp_cutoff
+        ).values_list('repost_of_id', 'author_id'):
+            engagers.setdefault(target_pid, set()).add(uid)
+
+    scored = []
+    for p in posts:
+        aff = affinity_score(p, followed_leagues, followed_teams)
+        tr = trending.get(p.id, 0.0)
+        sp = social_proof_score(len(engagers.get(p.id, ())))
+        decay = recency_decay(p.created_at, now)
+        score = decay * (
+            DiscoveryConfig.W_AFFINITY * aff
+            + DiscoveryConfig.W_TRENDING * tr
+            + DiscoveryConfig.W_SOCIAL_PROOF * sp
+        )
+        scored.append((score, p))
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [p for _, p in scored]

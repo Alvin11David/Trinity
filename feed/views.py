@@ -90,44 +90,35 @@ class GlobalFeedView(generics.ListAPIView):
         # Pool 2 — trending (cache read; keys are post ids)
         candidate_ids.update(trending.keys())
 
-        # Pool 3 — social proof (one bounded query per engagement type, scoped to
-        # the viewer's follow-list — never the whole post corpus). 36.8: reposts
-        # count here too, not just reactions/comments.
-        engagers = {}  # post_id -> set(follow_user_id)
+        # Pool 3 — social proof: which posts did the accounts I follow engage
+        # with recently? One bounded query per engagement type, scoped to the
+        # follow-list — never the whole post corpus. 36.8: reposts count here
+        # too, not just reactions/comments.
         if follow_ids:
             sp_cutoff = now - timedelta(hours=cfg.SOCIAL_POOL_LOOKBACK_HOURS)
-            for pid, uid in Reaction.objects.filter(
-                user_id__in=follow_ids, created_at__gte=sp_cutoff
-            ).values_list('post_id', 'user_id'):
-                engagers.setdefault(pid, set()).add(uid)
-            for pid, uid in Comment.objects.filter(
-                author_id__in=follow_ids, created_at__gte=sp_cutoff
-            ).values_list('post_id', 'author_id'):
-                engagers.setdefault(pid, set()).add(uid)
-            for target_pid, uid in Post.objects.filter(
-                author_id__in=follow_ids, repost_of__isnull=False,
-                created_at__gte=sp_cutoff,
-            ).values_list('repost_of_id', 'author_id'):
-                engagers.setdefault(target_pid, set()).add(uid)
-            candidate_ids.update(engagers.keys())
-
-        # Score every candidate with the single weighted formula.
-        posts = list(_posts_base_qs().filter(id__in=candidate_ids).exclude(author=user))
-        scored = []
-        for p in posts:
-            aff = scoring.affinity_score(p, followed_leagues, followed_teams)
-            tr = trending.get(p.id, 0.0)
-            sp = scoring.social_proof_score(len(engagers.get(p.id, ())))
-            decay = scoring.recency_decay(p.created_at, now)
-            score = decay * (
-                cfg.W_AFFINITY * aff + cfg.W_TRENDING * tr + cfg.W_SOCIAL_PROOF * sp
+            candidate_ids.update(
+                Reaction.objects.filter(
+                    user_id__in=follow_ids, created_at__gte=sp_cutoff
+                ).values_list('post_id', flat=True)
             )
-            scored.append((score, p))
+            candidate_ids.update(
+                Comment.objects.filter(
+                    author_id__in=follow_ids, created_at__gte=sp_cutoff
+                ).values_list('post_id', flat=True)
+            )
+            candidate_ids.update(
+                Post.objects.filter(
+                    author_id__in=follow_ids, repost_of__isnull=False,
+                    created_at__gte=sp_cutoff,
+                ).values_list('repost_of_id', flat=True)
+            )
 
-        scored.sort(key=lambda item: item[0], reverse=True)
-        top_posts = [p for _, p in scored[:cfg.FEED_PAGE_LIMIT]]
+        # Score the merged candidate set with the shared ranker (also used by
+        # Search's Top tab), excluding the viewer's own posts.
+        posts = _posts_base_qs().filter(id__in=candidate_ids).exclude(author=user)
+        ranked = scoring.rank_posts(posts, user, now=now)[:cfg.FEED_PAGE_LIMIT]
 
-        serializer = self.get_serializer(top_posts, many=True)
+        serializer = self.get_serializer(ranked, many=True)
         return Response(serializer.data)
 
 
@@ -372,3 +363,105 @@ class MuxWebhookView(APIView):
 
         recompute_post_media_state(media.post)
         return Response({'status': 'ok'})
+
+
+# --------------------------------------------------------------------------- #
+# Search (CLAUDE.md 37.2 / 37.3 / Step 6)
+# --------------------------------------------------------------------------- #
+
+class SearchView(APIView):
+    """Postgres full-text search (tsvector/tsquery) + pg_trgm — no external
+    search engine. Five tabs over sources that already exist:
+
+      Top     — text-matched posts ranked with the SAME 36.6 formula (reuses
+                scoring.rank_posts, just over a text-matched pool)
+      Latest  — same post pool, reverse-chronological
+      People  — User FTS (+ trigram for partial handles)
+      Matches — Match text search on team/league names (trigram), as cards
+      Media   — text-matched posts filtered to those with attachments (36.9)
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        q = (request.query_params.get('q') or '').strip()
+        tab = (request.query_params.get('tab') or 'top').lower()
+        try:
+            limit = min(int(request.query_params.get('limit', 50)), 100)
+        except (TypeError, ValueError):
+            limit = 50
+
+        if not q:
+            return Response({'tab': tab, 'query': q, 'results': []})
+
+        handler = {
+            'people': self._people,
+            'matches': self._matches,
+            'latest': self._latest,
+            'media': self._media,
+            'top': self._top,
+        }.get(tab, self._top)
+        return Response({'tab': tab, 'query': q, 'results': handler(q, request, limit)})
+
+    def _post_text_matches(self, q):
+        from django.contrib.postgres.search import SearchQuery, SearchVector
+        query = SearchQuery(q, search_type='websearch', config='english')
+        return _posts_base_qs().annotate(
+            doc=SearchVector('content', config='english')
+        ).filter(doc=query)
+
+    def _top(self, q, request, limit):
+        from . import scoring
+        posts = list(self._post_text_matches(q)[:scoring.DiscoveryConfig.AFFINITY_POOL_LIMIT])
+        ranked = scoring.rank_posts(posts, request.user)[:limit]
+        return PostSerializer(ranked, many=True, context={'request': request}).data
+
+    def _latest(self, q, request, limit):
+        posts = self._post_text_matches(q).order_by('-created_at')[:limit]
+        return PostSerializer(posts, many=True, context={'request': request}).data
+
+    def _media(self, q, request, limit):
+        posts = (
+            self._post_text_matches(q)
+            .filter(media__isnull=False).distinct().order_by('-created_at')[:limit]
+        )
+        return PostSerializer(posts, many=True, context={'request': request}).data
+
+    def _people(self, q, request, limit):
+        from django.contrib.postgres.search import (
+            SearchQuery, SearchVector, TrigramSimilarity,
+        )
+        from django.db.models import Q
+        from users.models import User
+        from users.serializers import UserSerializer
+
+        query = SearchQuery(q, search_type='websearch', config='english')
+        users = (
+            User.objects.annotate(
+                doc=SearchVector('username', 'first_name', 'last_name', 'bio', config='english'),
+                sim=TrigramSimilarity('username', q),
+            )
+            .filter(Q(doc=query) | Q(username__icontains=q))
+            .order_by('-sim')[:limit]
+        )
+        return UserSerializer(users, many=True, context={'request': request}).data
+
+    def _matches(self, q, request, limit):
+        from django.contrib.postgres.search import TrigramSimilarity
+        from django.db.models import Q
+        from matches.models import Match
+        from matches.serializers import MatchCardSerializer
+
+        matches = (
+            Match.objects.annotate(
+                sim=TrigramSimilarity('home_team', q)
+                + TrigramSimilarity('away_team', q)
+                + TrigramSimilarity('league_name', q)
+            )
+            .filter(
+                Q(home_team__icontains=q)
+                | Q(away_team__icontains=q)
+                | Q(league_name__icontains=q)
+            )
+            .order_by('-sim', 'kickoff_time')[:limit]
+        )
+        return MatchCardSerializer(matches, many=True).data
