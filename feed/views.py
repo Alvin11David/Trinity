@@ -154,3 +154,134 @@ class CommentDeleteView(APIView):
             return Response({'error': 'Not allowed.'}, status=status.HTTP_403_FORBIDDEN)
         comment.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# --------------------------------------------------------------------------- #
+# Media pipeline (CLAUDE.md 36.9 / Step 4)
+# --------------------------------------------------------------------------- #
+
+class MediaUploadURLView(APIView):
+    """Issue a direct-upload credential for a piece of media on the caller's own
+    post. Video → Mux direct upload (post goes 'processing' until the webhook).
+    Photo → S3 presigned PUT (finalized separately). The phone uploads the raw
+    bytes directly to the returned URL — never through Django."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        post = get_object_or_404(Post, pk=request.data.get('post_id'))
+        if post.author != request.user:
+            return Response({'error': 'Not allowed.'}, status=status.HTTP_403_FORBIDDEN)
+
+        media_type = request.data.get('media_type')
+        if media_type not in ('video', 'photo'):
+            return Response({'error': "media_type must be 'video' or 'photo'."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        order = request.data.get('order', 0)
+
+        try:
+            if media_type == 'video':
+                cred = media_lib.create_mux_direct_upload()
+                media = PostMedia.objects.create(
+                    post=post, media_type='video', status='processing',
+                    order=order, mux_upload_id=cred['upload_id'],
+                )
+                recompute_post_media_state(post)  # → processing
+                return Response({
+                    'media_id': media.id,
+                    'provider': 'mux',
+                    'upload_url': cred['upload_url'],
+                    'upload_id': cred['upload_id'],
+                }, status=status.HTTP_201_CREATED)
+
+            # photo
+            content_type = request.data.get('content_type', 'image/jpeg')
+            cred = media_lib.create_s3_presigned_upload(content_type=content_type)
+            media = PostMedia.objects.create(
+                post=post, media_type='photo', status='processing',
+                order=order, storage_key=cred['storage_key'],
+            )
+            recompute_post_media_state(post)
+            return Response({
+                'media_id': media.id,
+                'provider': 's3',
+                'upload_url': cred['upload_url'],
+                'storage_key': cred['storage_key'],
+                'public_url': cred['public_url'],
+                'content_type': content_type,
+            }, status=status.HTTP_201_CREATED)
+
+        except media_lib.MediaConfigError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+
+class PhotoFinalizeView(APIView):
+    """Called by the phone after its direct S3 PUT succeeds. Reads the object
+    back, validates + measures it with Pillow, marks it ready, and recomputes
+    the post's aggregate media state."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        media = get_object_or_404(PostMedia, pk=pk, media_type='photo')
+        if media.post.author != request.user:
+            return Response({'error': 'Not allowed.'}, status=status.HTTP_403_FORBIDDEN)
+        try:
+            media_lib.finalize_photo(media)
+        except media_lib.MediaConfigError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except Exception as exc:
+            return Response({'error': f'Could not finalize photo: {exc}'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        recompute_post_media_state(media.post)
+        return Response(PostMediaSerializer(media).data)
+
+
+class MuxWebhookView(APIView):
+    """Mux webhook receiver. On `video.asset.ready` the PostMedia (matched by
+    upload id) is populated with playback/thumbnail/duration and flipped ready,
+    then the post's media state is recomputed. Unauthenticated (Mux → us);
+    integrity is enforced by the Mux-Signature HMAC instead."""
+    authentication_classes = []
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        if not media_lib.verify_mux_signature(request.body, request.headers.get('Mux-Signature', '')):
+            return Response({'error': 'Invalid signature.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        event = request.data or {}
+        if event.get('type') != 'video.asset.ready':
+            # We only act on ready; ack everything else so Mux stops retrying.
+            return Response({'status': 'ignored'})
+
+        data = event.get('data', {})
+        upload_id = data.get('upload_id')
+        asset_id = data.get('id')
+        media = None
+        if upload_id:
+            media = PostMedia.objects.filter(mux_upload_id=upload_id).first()
+        if media is None and asset_id:
+            media = PostMedia.objects.filter(mux_asset_id=asset_id).first()
+        if media is None:
+            return Response({'status': 'no matching media'})
+
+        playback_ids = data.get('playback_ids') or []
+        playback_id = playback_ids[0]['id'] if playback_ids else None
+        duration = data.get('duration')
+
+        from django.conf import settings
+        if duration and duration > settings.MUX_MAX_VIDEO_DURATION:
+            # Over the per-upload cap (36.10) — reject rather than publish.
+            media.status = 'failed'
+            media.mux_asset_id = asset_id
+            media.duration = duration
+            media.save(update_fields=['status', 'mux_asset_id', 'duration', 'updated_at'])
+        else:
+            media.mux_asset_id = asset_id
+            media.mux_playback_id = playback_id
+            media.duration = duration
+            media.thumbnail_url = media_lib.mux_thumbnail_url(playback_id) if playback_id else None
+            media.status = 'ready'
+            media.save()
+
+        recompute_post_media_state(media.post)
+        return Response({'status': 'ok'})
