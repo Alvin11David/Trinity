@@ -199,20 +199,22 @@ def sync_match_statistics(match_id):
     return f"Synced statistics for match {match_id}"
 
 
-def sync_match_events(match_id):
-    """Sync goal/card/substitution events for a finished match."""
-    from .models import Match, MatchEvent
+def _sync_events_core(match):
+    """Upsert all events for a match from API-Football; return
+    (synced_count, [newly_created MatchEvent]). Shared by the one-shot
+    finish-time sync (sync_match_events) and the live poller
+    (sync_live_match_events), so the live diff and the backfill use identical
+    upsert logic."""
+    from .models import MatchEvent
     from .api_football_client import api_football_client
 
-    match = Match.objects.filter(id=match_id).first()
-    if not match:
-        return "Match not found"
     data = api_football_client._get('fixtures/events', params={'fixture': match.api_football_id})
     if not data:
-        return "No events available"
+        return 0, []
 
     TYPE_MAP = {'Goal': 'goal', 'Card': 'yellow_card', 'subst': 'substitution', 'Var': 'var'}
     synced = 0
+    new_events = []
     for event in data:
         event_type = TYPE_MAP.get(event['type'], 'other')
         if event['type'] == 'Card' and event.get('detail') == 'Red Card':
@@ -224,7 +226,7 @@ def sync_match_events(match_id):
         # refreshes assist_player/team/detail on rows that already exist,
         # rather than silently leaving them stale — needed for backfilling
         # assist data onto matches synced before this field existed.
-        MatchEvent.objects.update_or_create(
+        obj, created = MatchEvent.objects.update_or_create(
             match=match,
             event_type=event_type,
             player=player_info.get('name', ''),
@@ -236,4 +238,74 @@ def sync_match_events(match_id):
             }
         )
         synced += 1
+        if created:
+            new_events.append(obj)
+    return synced, new_events
+
+
+def sync_match_events(match_id):
+    """Sync goal/card/substitution events for a finished match (one-shot)."""
+    from .models import Match
+
+    match = Match.objects.filter(id=match_id).first()
+    if not match:
+        return "Match not found"
+    synced, _ = _sync_events_core(match)
     return f"Synced {synced} events for match {match_id}"
+
+
+def broadcast_match_event(match, event):
+    """Broadcast a new live event into the match's EXISTING MatchRoom Channels
+    group (group name `match_{pk}`, consumer handler `match_event`) — Section
+    3.5 reuse, no new WebSocket infrastructure (CLAUDE.md 36.4 / Step 8)."""
+    from asgiref.sync import async_to_sync
+    from channels.layers import get_channel_layer
+
+    layer = get_channel_layer()
+    if layer is None:
+        return
+    async_to_sync(layer.group_send)(
+        f'match_{match.id}',
+        {
+            'type': 'match_event',  # → MatchConsumer.match_event
+            'event': {
+                'id': event.id,
+                'event_type': event.event_type,
+                'team': event.team,
+                'player': event.player,
+                'assist_player': event.assist_player,
+                'minute': event.minute,
+                'detail': event.detail,
+            },
+            'match': {
+                'id': match.id,
+                'home_score': match.home_score,
+                'away_score': match.away_score,
+                'minute': match.minute,
+                'status': match.status,
+            },
+        },
+    )
+
+
+@shared_task
+def sync_live_match_events():
+    """Live-event poller (CLAUDE.md 36.4 / Step 8), ~every 60s — distinct from
+    check_for_finished_matches' 3-min cycle. Scans status='live' matches, diffs
+    the current event list against stored MatchEvent rows, and for each NEW
+    event fans out two ways: a WebSocket broadcast into the match room, and a
+    separate async notification task (not inline, so one popular match doesn't
+    block the poller)."""
+    from .models import Match
+
+    live = list(Match.objects.filter(status='live'))
+    total_new = 0
+    for match in live:
+        _, new_events = _sync_events_core(match)
+        for ev in new_events:
+            broadcast_match_event(match, ev)
+            # Separate async task — never inline (36.4).
+            from notifications.tasks import fan_out_match_event_notification
+            fan_out_match_event_notification.delay(ev.id)
+        total_new += len(new_events)
+    return f"live poll: {len(live)} live matches, {total_new} new events"

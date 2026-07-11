@@ -45,3 +45,23 @@ class FCMToken(models.Model):
 
     def __str__(self):
         return f"{self.user.username} - {self.device_type}"
+
+
+class ExpoPushToken(models.Model):
+    """Expo push token (CLAUDE.md 36.4 / Step 8). Distinct from FCMToken (raw
+    FCM/APNs device tokens, kept for legacy) — Expo tokens look like
+    `ExponentPushToken[...]` and are sent via Expo's push service, which
+    abstracts the FCM/APNs credential + relay. Registered from the app via
+    expo-notifications."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='expo_tokens')
+    token = models.CharField(max_length=255, unique=True)
+    device_type = models.CharField(
+        max_length=10,
+        choices=[('android', 'Android'), ('ios', 'iOS')],
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.username} - expo"
