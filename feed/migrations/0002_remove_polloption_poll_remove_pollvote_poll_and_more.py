@@ -12,6 +12,12 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # Clear the composite unique constraint BEFORE removing the fields it
+        # references (autodetector emitted these in the wrong order).
+        migrations.AlterUniqueTogether(
+            name='pollvote',
+            unique_together=None,
+        ),
         migrations.RemoveField(
             model_name='polloption',
             name='poll',
@@ -23,10 +29,6 @@ class Migration(migrations.Migration):
         migrations.RemoveField(
             model_name='pollvote',
             name='option',
-        ),
-        migrations.AlterUniqueTogether(
-            name='pollvote',
-            unique_together=None,
         ),
         migrations.RemoveField(
             model_name='pollvote',
