@@ -6,13 +6,15 @@ class Notification(models.Model):
     NOTIFICATION_TYPES = [
         ('kickoff', 'Kickoff Reminder'),
         ('goal', 'Goal Alert'),
+        ('card', 'Card'),                    # added Step 8 (36.4 granularity)
+        ('substitution', 'Substitution'),    # added Step 8 (36.4 granularity)
         ('reply', 'Reply'),
         ('repost', 'Repost'),
         ('follow', 'New Follower'),
         ('reaction', 'Reaction'),
         ('winnie_alert', 'Winnie Alert'),
         ('community_post', 'Community Post'),
-        ('match_result', 'Match Result'),
+        ('match_result', 'Match Result'),    # reused for full-time (FT)
         ('mention', 'Mention'),
     ]
 
