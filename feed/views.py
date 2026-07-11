@@ -34,14 +34,101 @@ class FeedView(generics.ListAPIView):
 
 
 class GlobalFeedView(generics.ListAPIView):
-    """For You feed (CLAUDE.md 36.3/36.6). Base endpoint; Step 5 layers the
-    affinity/trending/social-proof ranking on top of this same view rather than
-    introducing a new endpoint."""
+    """For You feed (CLAUDE.md 36.3 / 36.6 / Step 5).
+
+    Merges three narrow candidate pools and ranks them with the single weighted
+    formula from feed.scoring — NOT one score-vs-every-post pass:
+      * affinity      — recent match_object posts in followed leagues/teams
+      * trending      — cached global top-N (computed once by compute_trending)
+      * social proof  — posts recently engaged by accounts the viewer follows,
+                        bounded by the follow-list (reactions + comments +
+                        reposts, per the 36.8 fix)
+
+    Cold start falls out for free: a zero-follow viewer has empty affinity and
+    social-proof pools, so For You is just the trending pool.
+    """
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self):
-        return _posts_base_qs().all()
+    def list(self, request, *args, **kwargs):
+        from datetime import timedelta
+        from django.db.models import Q
+        from django.utils import timezone
+
+        from . import scoring
+        from .models import Reaction, Comment
+
+        cfg = scoring.DiscoveryConfig
+        user = request.user
+        now = timezone.now()
+
+        followed_leagues = scoring.get_followed_league_ids(user)
+        followed_teams = scoring.get_followed_team_ids(user)
+        follow_ids = list(
+            Follow.objects.filter(follower=user).values_list('following_id', flat=True)
+        )
+        trending = scoring.get_trending_scores()
+
+        candidate_ids = set()
+
+        # Pool 1 — affinity (indexed, request-time)
+        if followed_leagues or followed_teams:
+            aff_cutoff = now - timedelta(hours=cfg.AFFINITY_POOL_LOOKBACK_HOURS)
+            cond = Q(match__league_id__in=followed_leagues)
+            if followed_teams:
+                cond |= (
+                    Q(match__home_team_id__in=followed_teams)
+                    | Q(match__away_team_id__in=followed_teams)
+                )
+            aff_ids = (
+                Post.objects.filter(created_at__gte=aff_cutoff, post_type='match_object')
+                .filter(cond)
+                .values_list('id', flat=True)[:cfg.AFFINITY_POOL_LIMIT]
+            )
+            candidate_ids.update(aff_ids)
+
+        # Pool 2 — trending (cache read; keys are post ids)
+        candidate_ids.update(trending.keys())
+
+        # Pool 3 — social proof (one bounded query per engagement type, scoped to
+        # the viewer's follow-list — never the whole post corpus). 36.8: reposts
+        # count here too, not just reactions/comments.
+        engagers = {}  # post_id -> set(follow_user_id)
+        if follow_ids:
+            sp_cutoff = now - timedelta(hours=cfg.SOCIAL_POOL_LOOKBACK_HOURS)
+            for pid, uid in Reaction.objects.filter(
+                user_id__in=follow_ids, created_at__gte=sp_cutoff
+            ).values_list('post_id', 'user_id'):
+                engagers.setdefault(pid, set()).add(uid)
+            for pid, uid in Comment.objects.filter(
+                author_id__in=follow_ids, created_at__gte=sp_cutoff
+            ).values_list('post_id', 'author_id'):
+                engagers.setdefault(pid, set()).add(uid)
+            for target_pid, uid in Post.objects.filter(
+                author_id__in=follow_ids, repost_of__isnull=False,
+                created_at__gte=sp_cutoff,
+            ).values_list('repost_of_id', 'author_id'):
+                engagers.setdefault(target_pid, set()).add(uid)
+            candidate_ids.update(engagers.keys())
+
+        # Score every candidate with the single weighted formula.
+        posts = list(_posts_base_qs().filter(id__in=candidate_ids).exclude(author=user))
+        scored = []
+        for p in posts:
+            aff = scoring.affinity_score(p, followed_leagues, followed_teams)
+            tr = trending.get(p.id, 0.0)
+            sp = scoring.social_proof_score(len(engagers.get(p.id, ())))
+            decay = scoring.recency_decay(p.created_at, now)
+            score = decay * (
+                cfg.W_AFFINITY * aff + cfg.W_TRENDING * tr + cfg.W_SOCIAL_PROOF * sp
+            )
+            scored.append((score, p))
+
+        scored.sort(key=lambda item: item[0], reverse=True)
+        top_posts = [p for _, p in scored[:cfg.FEED_PAGE_LIMIT]]
+
+        serializer = self.get_serializer(top_posts, many=True)
+        return Response(serializer.data)
 
 
 class PostCreateView(generics.CreateAPIView):

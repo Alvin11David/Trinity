@@ -88,6 +88,17 @@ CHANNEL_LAYERS = {
     },
 }
 
+# Shared cache backend (Redis DB 1 — broker uses DB 0). Feed discovery's
+# trending pool is written by a Celery job and read by web requests, so the
+# cache MUST be cross-process shared, not per-process LocMemCache (CLAUDE.md
+# 36.6 / Step 5).
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': 'redis://localhost:6379/1',
+    }
+}
+
 CELERY_BROKER_URL = 'redis://localhost:6379/0'
 CELERY_RESULT_BACKEND = 'redis://localhost:6379/0'
 CELERY_ACCEPT_CONTENT = ['json']
@@ -104,6 +115,11 @@ CELERY_BEAT_SCHEDULE = {
     'sync-standings-daily-safety-net': {
         'task': 'leagues.tasks.sync_all_featured_standings',
         'schedule': crontab(hour=4, minute=0),
+    },
+    # Feed For You trending pool + hashtag trends (CLAUDE.md 36.6 / 37.4).
+    'compute-feed-trending': {
+        'task': 'feed.tasks.compute_trending',
+        'schedule': crontab(minute='*/20'),
     },
 }
 
