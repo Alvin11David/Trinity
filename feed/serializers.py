@@ -1,7 +1,16 @@
 from rest_framework import serializers
-from .models import Post, PostMedia, Reaction
+from .models import Post, PostMedia, Reaction, Comment
 from users.serializers import UserSerializer
 from matches.models import Match
+
+
+class CommentSerializer(serializers.ModelSerializer):
+    author = UserSerializer(read_only=True)
+
+    class Meta:
+        model = Comment
+        fields = ['id', 'post', 'author', 'parent', 'content', 'created_at']
+        read_only_fields = ['post', 'author']
 
 
 class PostMediaSerializer(serializers.ModelSerializer):
@@ -24,6 +33,7 @@ class PostSerializer(serializers.ModelSerializer):
     author = UserSerializer(read_only=True)
     reactions_count = serializers.SerializerMethodField()
     reposts_count = serializers.SerializerMethodField()
+    comments_count = serializers.SerializerMethodField()
     user_reaction = serializers.SerializerMethodField()
     match_card = serializers.SerializerMethodField()
     media = PostMediaSerializer(many=True, read_only=True)
@@ -36,7 +46,7 @@ class PostSerializer(serializers.ModelSerializer):
         model = Post
         fields = [
             'id', 'author', 'content', 'post_type', 'match_id',
-            'repost_of', 'reactions_count', 'reposts_count',
+            'repost_of', 'reactions_count', 'reposts_count', 'comments_count',
             'user_reaction', 'match_card', 'media', 'media_state',
             'created_at', 'updated_at',
         ]
@@ -46,6 +56,9 @@ class PostSerializer(serializers.ModelSerializer):
 
     def get_reposts_count(self, obj):
         return obj.reposts.count()
+
+    def get_comments_count(self, obj):
+        return obj.comments.count()
 
     def get_user_reaction(self, obj):
         request = self.context.get('request')
@@ -100,4 +113,11 @@ class PostCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data['author'] = self.context['request'].user
+        # Reposting a repost resolves to the ORIGINAL source post, never a chain
+        # (CLAUDE.md 36.7). One level suffices: every existing repost was itself
+        # resolved to an original at creation time, so a target either IS an
+        # original (repost_of is null) or already points straight at one.
+        target = validated_data.get('repost_of')
+        if target is not None and target.repost_of_id:
+            validated_data['repost_of'] = target.repost_of
         return super().create(validated_data)

@@ -122,3 +122,26 @@ class Reaction(models.Model):
 
     def __str__(self):
         return f"{self.user.username} reacted {self.reaction_type} to post {self.post.id}"
+
+
+class Comment(models.Model):
+    """
+    Threaded comments (CLAUDE.md 36.7). `parent` is a self-FK; null = top-level.
+    The whole thread is fetched in ONE flat query and nested in application code
+    (adjacency-list pattern) — no recursive SQL.
+    """
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='comments')
+    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='comments')
+    parent = models.ForeignKey(
+        'self', null=True, blank=True,
+        on_delete=models.CASCADE, related_name='replies',
+    )
+    content = models.TextField(max_length=500)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"{self.author.username} on post {self.post_id}: {self.content[:40]}"

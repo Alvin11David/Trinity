@@ -13,6 +13,10 @@ urlpatterns = [
     # Reactions
     path('posts/<int:pk>/react/', views.ReactionView.as_view(), name='react'),
 
+    # Comments (threaded)
+    path('posts/<int:pk>/comments/', views.PostCommentsView.as_view(), name='post_comments'),
+    path('comments/<int:pk>/', views.CommentDeleteView.as_view(), name='comment_delete'),
+
     # User posts
     path('users/<str:username>/posts/', views.UserPostsView.as_view(), name='user_posts'),
 ]

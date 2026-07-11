@@ -2,8 +2,8 @@ from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
-from .models import Post, Reaction
-from .serializers import PostSerializer, PostCreateSerializer
+from .models import Post, Reaction, Comment
+from .serializers import PostSerializer, PostCreateSerializer, CommentSerializer
 from users.models import Follow
 
 
@@ -11,7 +11,7 @@ from users.models import Follow
 # and can't drift (the duplication that caused earlier sync bugs — Section 15).
 def _posts_base_qs():
     return Post.objects.select_related('author', 'match').prefetch_related(
-        'reactions', 'reposts', 'media', 'match__events',
+        'reactions', 'reposts', 'comments', 'media', 'match__events',
     )
 
 
@@ -91,3 +91,62 @@ class UserPostsView(generics.ListAPIView):
     def get_queryset(self):
         username = self.kwargs['username']
         return _posts_base_qs().filter(author__username=username)
+
+
+def _build_comment_tree(comments):
+    """Build a nested reply tree from a flat, created_at-ordered comment list in
+    application code (CLAUDE.md 36.7 — no recursive SQL). Each node gets a
+    'replies' list; only top-level comments (parent is None) are returned as
+    roots. Orphans (parent filtered out) fall back to root level."""
+    nodes = {c['id']: {**c, 'replies': []} for c in comments}
+    roots = []
+    for c in comments:
+        node = nodes[c['id']]
+        parent_id = c.get('parent')
+        if parent_id and parent_id in nodes:
+            nodes[parent_id]['replies'].append(node)
+        else:
+            roots.append(node)
+    return roots
+
+
+class PostCommentsView(APIView):
+    """GET → the full comment thread for a post as a nested tree (one flat
+    query, nested in Python). POST → add a comment; optional `parent` in the
+    body makes it a reply."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        post = get_object_or_404(Post, pk=pk)
+        comments = post.comments.select_related('author').all()  # Meta orders by created_at
+        flat = CommentSerializer(comments, many=True, context={'request': request}).data
+        return Response(_build_comment_tree(flat))
+
+    def post(self, request, pk):
+        post = get_object_or_404(Post, pk=pk)
+        content = (request.data.get('content') or '').strip()
+        if not content:
+            return Response({'error': 'content is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        parent = None
+        parent_id = request.data.get('parent')
+        if parent_id:
+            # A reply's parent must belong to the same post.
+            parent = get_object_or_404(Comment, pk=parent_id, post=post)
+
+        comment = Comment.objects.create(
+            post=post, author=request.user, parent=parent, content=content,
+        )
+        data = CommentSerializer(comment, context={'request': request}).data
+        return Response(data, status=status.HTTP_201_CREATED)
+
+
+class CommentDeleteView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, pk):
+        comment = get_object_or_404(Comment, pk=pk)
+        if comment.author != request.user:
+            return Response({'error': 'Not allowed.'}, status=status.HTTP_403_FORBIDDEN)
+        comment.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
