@@ -24,7 +24,6 @@ class PostSerializer(serializers.ModelSerializer):
     author = UserSerializer(read_only=True)
     reactions_count = serializers.SerializerMethodField()
     reposts_count = serializers.SerializerMethodField()
-    comments_count = serializers.SerializerMethodField()
     user_reaction = serializers.SerializerMethodField()
     match_card = serializers.SerializerMethodField()
     media = PostMediaSerializer(many=True, read_only=True)
@@ -37,7 +36,7 @@ class PostSerializer(serializers.ModelSerializer):
         model = Post
         fields = [
             'id', 'author', 'content', 'post_type', 'match_id',
-            'repost_of', 'reactions_count', 'reposts_count', 'comments_count',
+            'repost_of', 'reactions_count', 'reposts_count',
             'user_reaction', 'match_card', 'media', 'media_state',
             'created_at', 'updated_at',
         ]
@@ -47,9 +46,6 @@ class PostSerializer(serializers.ModelSerializer):
 
     def get_reposts_count(self, obj):
         return obj.reposts.count()
-
-    def get_comments_count(self, obj):
-        return obj.comments.count()
 
     def get_user_reaction(self, obj):
         request = self.context.get('request')

@@ -11,7 +11,7 @@ from users.models import Follow
 # and can't drift (the duplication that caused earlier sync bugs — Section 15).
 def _posts_base_qs():
     return Post.objects.select_related('author', 'match').prefetch_related(
-        'reactions', 'reposts', 'comments', 'media',
+        'reactions', 'reposts', 'media',
     )
 
 
