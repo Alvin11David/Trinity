@@ -2,8 +2,12 @@ from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
-from .models import Post, Reaction, Comment
-from .serializers import PostSerializer, PostCreateSerializer, CommentSerializer
+from .models import Post, Reaction, Comment, PostMedia
+from .serializers import (
+    PostSerializer, PostCreateSerializer, CommentSerializer, PostMediaSerializer,
+)
+from . import media as media_lib
+from .services import recompute_post_media_state
 from users.models import Follow
 
 
