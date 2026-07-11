@@ -13,9 +13,6 @@ urlpatterns = [
     # Reactions
     path('posts/<int:pk>/react/', views.ReactionView.as_view(), name='react'),
 
-    # Polls
-    path('polls/<int:pk>/vote/', views.PollVoteView.as_view(), name='poll_vote'),
-
     # User posts
     path('users/<str:username>/posts/', views.UserPostsView.as_view(), name='user_posts'),
 ]
