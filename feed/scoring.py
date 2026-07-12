@@ -64,7 +64,10 @@ TRENDING_CACHE_TTL = 60 * 45                       # 45 min (job runs ~every 20)
 # scores shifting mid-scroll can't duplicate or skip posts. Short TTL —
 # regenerated on expiry or refresh. Per-user + on-demand, NOT a scheduled job.
 FORYOU_FROZEN_KEY = 'feed:foryou:frozen:{user_id}'
-FORYOU_FROZEN_TTL = 180                             # seconds (3 min)
+# 10 min: the trending job only recomputes every 15-30 min, so a shorter TTL
+# bought no real freshness — it just made the mid-scroll re-freeze seam (43.4)
+# more frequent for no benefit.
+FORYOU_FROZEN_TTL = 600                             # seconds (10 min)
 
 
 def recency_decay(created_at, now):
