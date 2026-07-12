@@ -58,6 +58,14 @@ TRENDING_CACHE_KEY = 'feed:trending_scores'        # {post_id: normalized_score}
 TRENDING_HASHTAGS_KEY = 'feed:trending_hashtags'   # [{'tag','count','score'}...]
 TRENDING_CACHE_TTL = 60 * 45                       # 45 min (job runs ~every 20)
 
+# Per-user "frozen" For You ordering (Section 43.4). On first load / pull-to-
+# refresh the ranked post-id list is cached under the viewer's id; subsequent
+# offset pages slice this stable snapshot instead of rescoring per request, so
+# scores shifting mid-scroll can't duplicate or skip posts. Short TTL —
+# regenerated on expiry or refresh. Per-user + on-demand, NOT a scheduled job.
+FORYOU_FROZEN_KEY = 'feed:foryou:frozen:{user_id}'
+FORYOU_FROZEN_TTL = 180                             # seconds (3 min)
+
 
 def recency_decay(created_at, now):
     """Exponential half-life decay in [0, 1]."""

@@ -97,17 +97,47 @@ class GlobalFeedView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def list(self, request, *args, **kwargs):
+        from django.core.cache import cache
+        from django.utils import timezone
+        from . import scoring
+
+        user = request.user
+        cache_key = scoring.FORYOU_FROZEN_KEY.format(user_id=user.id)
+
+        try:
+            offset = int(request.query_params.get('offset', 0) or 0)
+        except (TypeError, ValueError):
+            offset = 0
+
+        # offset==0 means the first page OR a pull-to-refresh — both re-freeze
+        # the ranked list. offset>0 slices the frozen list; a missing/expired
+        # (TTL) frozen list is regenerated on demand.
+        frozen = None if offset == 0 else cache.get(cache_key)
+        if frozen is None:
+            frozen = self._build_ranked_ids(user, timezone.now())
+            cache.set(cache_key, frozen, scoring.FORYOU_FROZEN_TTL)
+
+        # Slice the FROZEN ordered id list, then hydrate + serialize the page's
+        # posts in that frozen order — no per-page rescoring, so scores shifting
+        # between requests can't duplicate or skip posts mid-scroll.
+        paginator = FeedLimitOffsetPagination()
+        page_ids = paginator.paginate_queryset(frozen, request, view=self) or []
+        by_id = {p.id: p for p in _posts_base_qs().filter(id__in=page_ids)}
+        page_posts = [by_id[pid] for pid in page_ids if pid in by_id]
+        serializer = self.get_serializer(page_posts, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+    def _build_ranked_ids(self, user, now):
+        """Compute the merged 3-pool candidate set (affinity + trending + social
+        proof), rank it once with the shared ranker, and return the ordered list
+        of post ids (CLAUDE.md 36.6). Runs only on first load / refresh / TTL
+        expiry — subsequent pages slice the cached result (43.4)."""
         from datetime import timedelta
         from django.db.models import Q
-        from django.utils import timezone
-
         from . import scoring
         from .models import Reaction, Comment
 
         cfg = scoring.DiscoveryConfig
-        user = request.user
-        now = timezone.now()
-
         followed_leagues = scoring.get_followed_league_ids(user)
         followed_teams = scoring.get_followed_team_ids(user)
         follow_ids = list(
@@ -117,7 +147,7 @@ class GlobalFeedView(generics.ListAPIView):
 
         candidate_ids = set()
 
-        # Pool 1 — affinity (indexed, request-time)
+        # Pool 1 — affinity
         if followed_leagues or followed_teams:
             aff_cutoff = now - timedelta(hours=cfg.AFFINITY_POOL_LOOKBACK_HOURS)
             cond = Q(match__league_id__in=followed_leagues)
@@ -126,31 +156,25 @@ class GlobalFeedView(generics.ListAPIView):
                     Q(match__home_team_id__in=followed_teams)
                     | Q(match__away_team_id__in=followed_teams)
                 )
-            aff_ids = (
+            candidate_ids.update(
                 Post.objects.filter(created_at__gte=aff_cutoff, post_type='match_object')
                 .filter(cond)
                 .values_list('id', flat=True)[:cfg.AFFINITY_POOL_LIMIT]
             )
-            candidate_ids.update(aff_ids)
 
         # Pool 2 — trending (cache read; keys are post ids)
         candidate_ids.update(trending.keys())
 
-        # Pool 3 — social proof: which posts did the accounts I follow engage
-        # with recently? One bounded query per engagement type, scoped to the
-        # follow-list — never the whole post corpus. 36.8: reposts count here
-        # too, not just reactions/comments.
+        # Pool 3 — social proof (reactions + comments + reposts by follows; 36.8)
         if follow_ids:
             sp_cutoff = now - timedelta(hours=cfg.SOCIAL_POOL_LOOKBACK_HOURS)
             candidate_ids.update(
-                Reaction.objects.filter(
-                    user_id__in=follow_ids, created_at__gte=sp_cutoff
-                ).values_list('post_id', flat=True)
+                Reaction.objects.filter(user_id__in=follow_ids, created_at__gte=sp_cutoff)
+                .values_list('post_id', flat=True)
             )
             candidate_ids.update(
-                Comment.objects.filter(
-                    author_id__in=follow_ids, created_at__gte=sp_cutoff
-                ).values_list('post_id', flat=True)
+                Comment.objects.filter(author_id__in=follow_ids, created_at__gte=sp_cutoff)
+                .values_list('post_id', flat=True)
             )
             candidate_ids.update(
                 Post.objects.filter(
@@ -159,16 +183,8 @@ class GlobalFeedView(generics.ListAPIView):
                 ).values_list('repost_of_id', flat=True)
             )
 
-        # Score the merged candidate set with the shared ranker (also used by
-        # Search's Top tab), excluding the viewer's own posts. No cap — the whole
-        # ranked candidate pool is paginated by offset/limit below.
         posts = _posts_base_qs().filter(id__in=candidate_ids).exclude(author=user)
-        ranked = scoring.rank_posts(posts, user, now=now)
-
-        paginator = FeedLimitOffsetPagination()
-        page = paginator.paginate_queryset(ranked, request, view=self)
-        serializer = self.get_serializer(page, many=True)
-        return paginator.get_paginated_response(serializer.data)
+        return [p.id for p in scoring.rank_posts(posts, user, now=now)]
 
 
 class PostCreateView(generics.CreateAPIView):
