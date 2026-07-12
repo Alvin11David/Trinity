@@ -1,6 +1,7 @@
 from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.pagination import CursorPagination, LimitOffsetPagination
 from django.shortcuts import get_object_or_404
 from .models import Post, Reaction, Comment, PostMedia
 from .serializers import (
@@ -19,6 +20,23 @@ def _posts_base_qs():
     )
 
 
+class FollowingCursorPagination(CursorPagination):
+    """Stable keyset pagination for the reverse-chron Following feed. Ordered by
+    (created_at, id) so the id tie-breaks posts sharing a timestamp — no drift or
+    duplicates as new posts arrive at the head."""
+    page_size = 20
+    ordering = ('-created_at', '-id')
+    cursor_query_param = 'cursor'
+
+
+class FeedLimitOffsetPagination(LimitOffsetPagination):
+    """offset/limit for the For You feed. The ranked list is recomputed per
+    request (no cached snapshot) — minor rank drift between pages is an accepted
+    trade-off (Section 43), not a bug."""
+    default_limit = 20
+    max_limit = 50
+
+
 class FeedView(generics.ListAPIView):
     """Following feed (CLAUDE.md 36.3), reverse-chronological.
 
@@ -33,6 +51,7 @@ class FeedView(generics.ListAPIView):
     """
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticated]
+    pagination_class = FollowingCursorPagination
 
     def get_queryset(self):
         from django.db.models import Q
@@ -141,12 +160,15 @@ class GlobalFeedView(generics.ListAPIView):
             )
 
         # Score the merged candidate set with the shared ranker (also used by
-        # Search's Top tab), excluding the viewer's own posts.
+        # Search's Top tab), excluding the viewer's own posts. No cap — the whole
+        # ranked candidate pool is paginated by offset/limit below.
         posts = _posts_base_qs().filter(id__in=candidate_ids).exclude(author=user)
-        ranked = scoring.rank_posts(posts, user, now=now)[:cfg.FEED_PAGE_LIMIT]
+        ranked = scoring.rank_posts(posts, user, now=now)
 
-        serializer = self.get_serializer(ranked, many=True)
-        return Response(serializer.data)
+        paginator = FeedLimitOffsetPagination()
+        page = paginator.paginate_queryset(ranked, request, view=self)
+        serializer = self.get_serializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
 
 class PostCreateView(generics.CreateAPIView):

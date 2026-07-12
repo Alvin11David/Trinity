@@ -50,7 +50,6 @@ class DiscoveryConfig:
     AFFINITY_POOL_LOOKBACK_HOURS = 48
     AFFINITY_POOL_LIMIT = 200
     SOCIAL_POOL_LOOKBACK_HOURS = 48
-    FEED_PAGE_LIMIT = 100            # max scored posts returned by For You
 
 
 # Cache keys populated by feed.tasks.compute_trending (Step 5) and read at
