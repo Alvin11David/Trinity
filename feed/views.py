@@ -20,17 +20,44 @@ def _posts_base_qs():
 
 
 class FeedView(generics.ListAPIView):
-    """Following feed (CLAUDE.md 36.3): posts by accounts the viewer follows,
-    reverse-chronological. Verified during the Section 38 reconciliation to
-    already match the Following spec — kept, not rebuilt."""
+    """Following feed (CLAUDE.md 36.3), reverse-chronological.
+
+    Following = (posts from accounts the viewer follows)
+              ∪ (match_object recap posts by the system account, filtered
+                 through the viewer's UserLeagueFollow list).
+
+    The second branch is the 36.2 distribution mechanism for system recap posts,
+    formally confirmed 2026-07-11 (Section 38.7): recaps are authored by the
+    global system account, which nobody follows, so without this they'd never
+    reach Following — they surface for viewers who follow the recap's league.
+    """
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        from django.db.models import Q
+        from leagues.models import UserLeagueFollow
+        from .services import SYSTEM_USERNAME
+
+        user = self.request.user
         following_ids = Follow.objects.filter(
-            follower=self.request.user
+            follower=user
         ).values_list('following_id', flat=True)
-        return _posts_base_qs().filter(author_id__in=following_ids)
+        followed_league_ids = UserLeagueFollow.objects.filter(
+            user=user
+        ).values_list('league__league_id', flat=True)
+
+        # OR-filter (deduped, keeps the base -created_at ordering). If the viewer
+        # follows no leagues, the recap branch matches nothing → just followed
+        # users, exactly as before.
+        return _posts_base_qs().filter(
+            Q(author_id__in=following_ids)
+            | Q(
+                author__username=SYSTEM_USERNAME,
+                post_type='match_object',
+                match__league_id__in=followed_league_ids,
+            )
+        )
 
 
 class GlobalFeedView(generics.ListAPIView):

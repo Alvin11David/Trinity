@@ -56,9 +56,12 @@ def create_mux_direct_upload(cors_origin='*'):
             'cors_origin': cors_origin,
             'new_asset_settings': {
                 'playback_policy': ['public'],
-                # basic/baseline tier: free encoding + 6k free delivery min/mo,
-                # explicitly positioned for social/UGC (36.9).
-                'encoding_tier': 'baseline',
+                # basic tier: free encoding + free delivery minutes, positioned
+                # for social/UGC (36.9). Uses Mux's CURRENT field name
+                # (video_quality:'basic'); the old encoding_tier:'baseline' was
+                # deprecated by Mux in 2024 and is avoided — fresh build, no
+                # legacy constraint.
+                'video_quality': 'basic',
             },
         },
         timeout=10,
