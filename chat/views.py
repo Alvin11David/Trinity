@@ -239,3 +239,74 @@ class MessagePollVoteView(APIView):
             'status': 'voted' if created else 'updated',
             'option_index': option_index,
         })
+
+
+def _can_pin(conversation, user):
+    """Pin/unpin permission — same rule for both (whoever may pin may unpin,
+    including unpinning someone else's pin). Returns (allowed, error_message).
+      - match room  → nobody (restricted surface, same as message-type limits)
+      - channel     → admins only
+      - direct/group→ any member
+    """
+    if is_match_room(conversation):
+        return False, 'Messages cannot be pinned in match rooms.'
+    membership = Membership.objects.filter(conversation=conversation, user=user).first()
+    if not membership:
+        return False, 'Only members can pin messages.'
+    if conversation.conversation_type == 'channel' and membership.role != 'admin':
+        return False, 'Only admins can pin in channels.'
+    return True, None
+
+
+class PinnedMessagesListView(generics.ListAPIView):
+    """Pinned messages for a conversation (participant-only visibility)."""
+    serializer_class = PinnedMessageSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_context(self):
+        return {'request': self.request}
+
+    def get_queryset(self):
+        conversation = get_object_or_404(
+            Conversation, pk=self.kwargs['pk'], participants=self.request.user
+        )
+        return conversation.pinned_messages.select_related(
+            'message', 'message__sender', 'pinned_by'
+        )
+
+
+class PinMessageView(APIView):
+    """POST to pin a message, DELETE to unpin. Same permission gate for both."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _get_conversation(self, request, pk):
+        return get_object_or_404(Conversation, pk=pk, participants=request.user)
+
+    def post(self, request, pk, message_pk):
+        conversation = self._get_conversation(request, pk)
+        allowed, error = _can_pin(conversation, request.user)
+        if not allowed:
+            return Response({'error': error}, status=status.HTTP_403_FORBIDDEN)
+        message = get_object_or_404(Message, pk=message_pk, conversation=conversation)
+        if PinnedMessage.objects.filter(conversation=conversation, message=message).exists():
+            return Response({'error': 'Already pinned.'}, status=status.HTTP_400_BAD_REQUEST)
+        # Enforce the cap at creation — reject the 6th rather than auto-unpinning.
+        if conversation.pinned_messages.count() >= MAX_PINS_PER_CONVERSATION:
+            return Response(
+                {'error': f'A conversation can have at most {MAX_PINS_PER_CONVERSATION} pinned messages. Unpin one first.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        pin = PinnedMessage.objects.create(
+            conversation=conversation, message=message, pinned_by=request.user
+        )
+        serializer = PinnedMessageSerializer(pin, context={'request': request})
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def delete(self, request, pk, message_pk):
+        conversation = self._get_conversation(request, pk)
+        allowed, error = _can_pin(conversation, request.user)
+        if not allowed:
+            return Response({'error': error}, status=status.HTTP_403_FORBIDDEN)
+        pin = get_object_or_404(PinnedMessage, conversation=conversation, message_id=message_pk)
+        pin.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

@@ -10,7 +10,12 @@ urlpatterns = [
     # Messages
     path('<int:pk>/messages/', views.MessageListView.as_view(), name='messages'),
     path('<int:pk>/messages/send/', views.MessageCreateView.as_view(), name='send_message'),
+    path('<int:pk>/messages/<int:message_pk>/', views.MessageDetailView.as_view(), name='message_detail'),
     path('messages/<int:pk>/poll/vote/', views.MessagePollVoteView.as_view(), name='message_poll_vote'),
+
+    # Pinned messages
+    path('<int:pk>/pinned/', views.PinnedMessagesListView.as_view(), name='pinned_messages'),
+    path('<int:pk>/messages/<int:message_pk>/pin/', views.PinMessageView.as_view(), name='pin_message'),
 
     # Members
     path('<int:pk>/members/', views.ConversationMembersView.as_view(), name='conversation_members'),
