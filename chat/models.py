@@ -42,6 +42,9 @@ class Membership(models.Model):
     conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='memberships')
     role = models.CharField(max_length=10, choices=ROLES, default='member')
     joined_at = models.DateTimeField(auto_now_add=True)
+    # Read receipt: the moment this member last viewed the conversation. Works
+    # uniformly for DMs and groups, and supersedes Message.is_read (see below).
+    last_read_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         unique_together = ('user', 'conversation')
@@ -65,6 +68,9 @@ class Message(models.Model):
     message_type = models.CharField(max_length=20, choices=MESSAGE_TYPES, default='text')
     match_id = models.IntegerField(null=True, blank=True)
     metadata = models.JSONField(null=True, blank=True)
+    # DEPRECATED: superseded by Membership.last_read_at (a per-member read
+    # cursor that generalizes to group conversations). No longer written; kept
+    # only so historical rows don't need a destructive migration.
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -73,3 +79,21 @@ class Message(models.Model):
 
     def __str__(self):
         return f"{self.sender.username}: {self.content[:50]}"
+
+
+class MessagePollVote(models.Model):
+    """A single user's vote on a poll message (message_type='poll'). Poll
+    options live in Message.metadata['options']; this records which option a
+    user picked. Deliberately lean — not a revival of feed's removed
+    Poll/PollOption/PollVote system. One vote per (user, message); re-voting
+    updates option_index rather than inserting a duplicate."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='message_poll_votes')
+    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name='poll_votes')
+    option_index = models.IntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'message')
+
+    def __str__(self):
+        return f"{self.user.username} → option {self.option_index} on msg {self.message_id}"

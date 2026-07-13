@@ -2,7 +2,8 @@ from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
-from .models import Conversation, Message, Membership
+from django.utils import timezone
+from .models import Conversation, Message, Membership, MessagePollVote
 from .serializers import (
     ConversationSerializer, ConversationCreateSerializer,
     MessageSerializer
@@ -41,13 +42,19 @@ class MessageListView(generics.ListAPIView):
     serializer_class = MessageSerializer
     permission_classes = [permissions.IsAuthenticated]
 
+    def get_serializer_context(self):
+        return {'request': self.request}
+
     def get_queryset(self):
         conversation_id = self.kwargs['pk']
         conversation = get_object_or_404(
             Conversation, pk=conversation_id, participants=self.request.user
         )
-        # Mark messages as read
-        conversation.messages.exclude(sender=self.request.user).update(is_read=True)
+        # Read receipt: advance this member's read cursor to now (replaces the
+        # old per-message is_read bulk update).
+        conversation.memberships.filter(user=self.request.user).update(
+            last_read_at=timezone.now()
+        )
         return conversation.messages.all().select_related('sender')
 
 
