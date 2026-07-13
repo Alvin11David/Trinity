@@ -10,6 +10,11 @@ urlpatterns = [
     # Messages
     path('<int:pk>/messages/', views.MessageListView.as_view(), name='messages'),
     path('<int:pk>/messages/send/', views.MessageCreateView.as_view(), name='send_message'),
+    path('messages/<int:pk>/poll/vote/', views.MessagePollVoteView.as_view(), name='message_poll_vote'),
+
+    # Moderation (admin-only)
+    path('<int:pk>/members/<int:user_id>/kick/', views.KickMemberView.as_view(), name='kick_member'),
+    path('<int:pk>/members/<int:user_id>/promote/', views.PromoteMemberView.as_view(), name='promote_member'),
 
     # Channels
     path('channels/public/', views.PublicChannelsView.as_view(), name='public_channels'),

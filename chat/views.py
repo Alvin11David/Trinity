@@ -119,3 +119,65 @@ class LeaveConversationView(APIView):
         membership = get_object_or_404(Membership, user=request.user, conversation=conversation)
         membership.delete()
         return Response({'status': 'left'})
+
+
+def _require_admin(conversation, user):
+    """Return True if `user` is an admin of `conversation`."""
+    return Membership.objects.filter(
+        conversation=conversation, user=user, role='admin'
+    ).exists()
+
+
+class KickMemberView(APIView):
+    """Admin-only: remove another member from a conversation. Minimal moderation
+    (no ban, no audit log) — the kicked user can be re-added/re-invited normally."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk, user_id):
+        conversation = get_object_or_404(Conversation, pk=pk)
+        if not _require_admin(conversation, request.user):
+            return Response({'error': 'Admins only.'}, status=status.HTTP_403_FORBIDDEN)
+        if int(user_id) == request.user.id:
+            return Response({'error': 'Use leave to remove yourself.'}, status=status.HTTP_400_BAD_REQUEST)
+        membership = get_object_or_404(Membership, conversation=conversation, user_id=user_id)
+        membership.delete()
+        return Response({'status': 'kicked'})
+
+
+class PromoteMemberView(APIView):
+    """Admin-only: promote another member to admin. No demote in scope."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk, user_id):
+        conversation = get_object_or_404(Conversation, pk=pk)
+        if not _require_admin(conversation, request.user):
+            return Response({'error': 'Admins only.'}, status=status.HTTP_403_FORBIDDEN)
+        membership = get_object_or_404(Membership, conversation=conversation, user_id=user_id)
+        membership.role = 'admin'
+        membership.save()
+        return Response({'status': 'promoted', 'role': 'admin'})
+
+
+class MessagePollVoteView(APIView):
+    """Vote on a poll message. Any participant of the conversation may vote;
+    re-voting updates the existing choice rather than duplicating it."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk):
+        message = get_object_or_404(
+            Message, pk=pk, conversation__participants=request.user
+        )
+        if message.message_type != 'poll':
+            return Response({'error': 'Not a poll message.'}, status=status.HTTP_400_BAD_REQUEST)
+        option_index = request.data.get('option_index')
+        options = (message.metadata or {}).get('options') or []
+        if not isinstance(option_index, int) or not (0 <= option_index < len(options)):
+            return Response({'error': 'Invalid option_index.'}, status=status.HTTP_400_BAD_REQUEST)
+        vote, created = MessagePollVote.objects.update_or_create(
+            user=request.user, message=message,
+            defaults={'option_index': option_index}
+        )
+        return Response({
+            'status': 'voted' if created else 'updated',
+            'option_index': option_index,
+        })
