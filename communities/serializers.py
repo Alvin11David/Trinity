@@ -42,7 +42,7 @@ class CommunityPostSerializer(serializers.ModelSerializer):
     class Meta:
         model = CommunityPost
         fields = [
-            'id', 'community', 'author', 'content', 'match_id',
+            'id', 'community', 'author', 'content', 'post_type', 'match_id',
             'is_pinned', 'upvotes', 'downvotes', 'user_vote', 'created_at'
         ]
 
@@ -63,7 +63,18 @@ class CommunityPostSerializer(serializers.ModelSerializer):
 class CommunityPostCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = CommunityPost
-        fields = ['id', 'content', 'match_id']
+        fields = ['id', 'content', 'post_type', 'match_id']
+
+    def validate(self, data):
+        # Same existence check chat.Message applies — a post may only reference
+        # a Match that actually exists (match_id=None is fine: no match attached).
+        match_id = data.get('match_id')
+        from matches.models import validate_match_id
+        if not validate_match_id(match_id):
+            raise serializers.ValidationError('Invalid match_id — no matching Match found.')
+        if data.get('post_type') == 'match_object' and not match_id:
+            raise serializers.ValidationError('match_id is required for match_object posts.')
+        return data
 
     def create(self, validated_data):
         validated_data['author'] = self.context['request'].user

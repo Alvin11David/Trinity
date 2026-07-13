@@ -108,6 +108,10 @@ class JoinChannelView(APIView):
         )
         if not created:
             return Response({'error': 'Already a member.'}, status=status.HTTP_400_BAD_REQUEST)
+        # If this channel is a community's companion channel, joining it also
+        # joins the community (membership syncs both ways; roles don't).
+        from communities.services import sync_membership_to_community
+        sync_membership_to_community(request.user, channel, joined=True)
         return Response({'status': 'joined'})
 
 
@@ -118,6 +122,10 @@ class LeaveConversationView(APIView):
         conversation = get_object_or_404(Conversation, pk=pk, participants=request.user)
         membership = get_object_or_404(Membership, user=request.user, conversation=conversation)
         membership.delete()
+        # If this was a community's companion channel, leaving it also leaves
+        # the community (membership syncs both ways; roles don't).
+        from communities.services import sync_membership_to_community
+        sync_membership_to_community(request.user, conversation, joined=False)
         return Response({'status': 'left'})
 
 
@@ -140,7 +148,11 @@ class KickMemberView(APIView):
         if int(user_id) == request.user.id:
             return Response({'error': 'Use leave to remove yourself.'}, status=status.HTTP_400_BAD_REQUEST)
         membership = get_object_or_404(Membership, conversation=conversation, user_id=user_id)
+        kicked_user = membership.user
         membership.delete()
+        # Mirror removal onto a linked community, if this is a companion channel.
+        from communities.services import sync_membership_to_community
+        sync_membership_to_community(kicked_user, conversation, joined=False)
         return Response({'status': 'kicked'})
 
 

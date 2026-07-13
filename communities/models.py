@@ -39,9 +39,19 @@ class CommunityMembership(models.Model):
 
 
 class CommunityPost(models.Model):
+    # Mirrors feed.Post.post_type / chat.Message.message_type — added pre-launch
+    # while switching cost is low. 'text' matches all existing rows' behavior.
+    POST_TYPES = [
+        ('text', 'Text'),
+        ('match_object', 'Match Object'),
+        ('poll', 'Poll'),
+        ('winnie_insight', 'Winnie Insight'),
+    ]
+
     community = models.ForeignKey(Community, on_delete=models.CASCADE, related_name='posts')
     author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='community_posts')
     content = models.TextField(max_length=500)
+    post_type = models.CharField(max_length=20, choices=POST_TYPES, default='text')
     match_id = models.IntegerField(null=True, blank=True)
     is_pinned = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -52,6 +62,21 @@ class CommunityPost(models.Model):
 
     def __str__(self):
         return f"{self.author.username} in {self.community.name}: {self.content[:50]}"
+
+
+class CommunityRoom(models.Model):
+    """Optional companion chat channel for a community (moderator-enabled, not
+    auto-created for every community — unlike matches.MatchRoom). Membership
+    syncs bidirectionally between the Community and its linked Conversation;
+    roles do NOT sync (community moderator ≠ channel admin)."""
+    community = models.OneToOneField(Community, on_delete=models.CASCADE, related_name='room')
+    conversation = models.OneToOneField(
+        'chat.Conversation', on_delete=models.CASCADE, related_name='community_room'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Room for {self.community.name}"
 
 
 class CommunityPostVote(models.Model):

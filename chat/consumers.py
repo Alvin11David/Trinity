@@ -33,8 +33,30 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     async def receive(self, text_data):
+        """Type-dispatch between event kinds (previously every payload was
+        implicitly a message send). Current events:
+          - {'type': 'typing', 'is_typing': bool} — ephemeral, never persisted
+          - anything else — a message send. For backward compatibility with the
+            original implicit shape, the message_type is read from
+            'message_type' if present, else from 'type' (the old contract used
+            'type' to carry text/match_card/...), defaulting to 'text'.
+        """
         data = json.loads(text_data)
-        message_type = data.get('type', 'text')
+        event_kind = data.get('type', 'text')
+
+        if event_kind == 'typing':
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    'type': 'typing_indicator',
+                    'user_id': self.user.id,
+                    'username': self.user.username,
+                    'is_typing': bool(data.get('is_typing', True)),
+                }
+            )
+            return
+
+        message_type = data.get('message_type', event_kind)
         content = data.get('content', '')
         match_id = data.get('match_id', None)
         metadata = data.get('metadata', None)
@@ -47,13 +69,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             }))
             return
 
-        message = await self.save_message(content, message_type, match_id, metadata)
+        message, error = await self.save_message(content, message_type, match_id, metadata)
 
-        # save_message returns None when match_card validation fails
-        if message is None:
-            await self.send(text_data=json.dumps({
-                'error': 'Invalid match_id — no matching Match found.'
-            }))
+        if error:
+            await self.send(text_data=json.dumps({'error': error}))
             return
 
         await self.channel_layer.group_send(
@@ -73,6 +92,11 @@ class ChatConsumer(AsyncWebsocketConsumer):
         )
 
     async def chat_message(self, event):
+        await self.send(text_data=json.dumps(event))
+
+    async def typing_indicator(self, event):
+        # Ephemeral relay — clients filter out their own user_id and auto-expire
+        # the indicator after a few seconds of silence.
         await self.send(text_data=json.dumps(event))
 
     @database_sync_to_async
@@ -98,12 +122,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def save_message(self, content, message_type, match_id, metadata):
-        # Validate match_card references a real Match before persisting.
-        # Runs in sync context, so the error is surfaced by receive() via self.send().
-        if message_type == 'match_card':
-            from matches.models import validate_match_id
-            if not match_id or not validate_match_id(match_id):
-                return None
+        # Shared typed-message validation (match_card/prediction_card/poll) —
+        # same helper the REST serializer uses, so the two paths can't drift.
+        # Returns (message_dict, error_string); exactly one is non-None.
+        from .validators import validate_message_payload
+        error = validate_message_payload(message_type, match_id=match_id, metadata=metadata)
+        if error:
+            return None, error
         message = Message.objects.create(
             conversation_id=self.conversation_id,
             sender=self.user,
@@ -122,4 +147,4 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'match_id': message.match_id,
             'metadata': message.metadata,
             'created_at': str(message.created_at),
-        }
+        }, None

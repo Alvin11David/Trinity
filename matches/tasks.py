@@ -40,12 +40,24 @@ def check_for_finished_matches():
         new_status = STATUS_MAP.get(status_short, match.status)
 
         was_finished = match.status == 'finished'
+        was_live = match.status == 'live'
         match.status = new_status
         match.status_short = status_short
         match.minute = fixture_data['fixture']['status'].get('elapsed')
         match.home_score = fixture_data['goals'].get('home')
         match.away_score = fixture_data['goals'].get('away')
         match.save()
+
+        # MatchRoom auto-creation at the scheduled → live transition —
+        # mirrors the recap post's live → finished hook below. Guarded so a
+        # chat-side failure can't break match syncing. ensure_match_room is
+        # idempotent, so re-entering this branch on a later poll is harmless.
+        if new_status == 'live' and not was_live:
+            try:
+                from .services import ensure_match_room
+                ensure_match_room(match)
+            except Exception as exc:  # pragma: no cover - defensive
+                print(f"match room creation failed for match {match.id}: {exc}")
 
         if new_status == 'finished' and not was_finished:
             newly_finished_match_ids.append(match.id)
@@ -312,5 +324,77 @@ def sync_live_match_events():
             # Separate async task — never inline (36.4).
             from notifications.tasks import fan_out_match_event_notification
             fan_out_match_event_notification.delay(ev.id)
+            # Third consumer of this pipeline: goals (only goals — cards/subs/FT
+            # stay off the room feed; notifications already cover the full
+            # range) also land as a goal_event Message in the match's room.
+            if ev.event_type == 'goal':
+                try:
+                    create_goal_event_message(match, ev)
+                except Exception as exc:  # pragma: no cover - defensive
+                    print(f"goal_event message failed for match {match.id}: {exc}")
         total_new += len(new_events)
     return f"live poll: {len(live)} live matches, {total_new} new events"
+
+
+def create_goal_event_message(match, event):
+    """Create a goal_event Message in the match's MatchRoom conversation for a
+    newly-detected goal. Uses ensure_match_room defensively (self-healing if the
+    scheduled→live hook somehow didn't fire), and broadcasts into the room's
+    chat group so connected clients see it live, same shape as a normal send.
+
+    Missed penalties arrive as event_type='goal' with 'Missed' in detail (same
+    API-Football quirk the Facts tab and recap scorer list already handle) —
+    they are skipped, not posted as goals.
+    """
+    if 'missed' in (event.detail or '').lower():
+        return None
+
+    from .services import ensure_match_room
+    from chat.models import Message, Conversation
+    from feed.services import get_system_user
+
+    room = ensure_match_room(match)
+    system_user = get_system_user()
+
+    metadata = {
+        'scorer': event.player,
+        'team': event.team,
+        'minute': event.minute,
+        'assist': event.assist_player,
+        'home_score': match.home_score,
+        'away_score': match.away_score,
+    }
+    message = Message.objects.create(
+        conversation=room.conversation,
+        sender=system_user,
+        content=f"⚽ {event.player} ({event.team}) {event.minute}'",
+        message_type='goal_event',
+        match_id=match.id,
+        metadata=metadata,
+    )
+    Conversation.objects.filter(pk=room.conversation_id).update(
+        updated_at=message.created_at
+    )
+
+    # Live broadcast into the room's chat group (chat_{conversation_id}),
+    # mirroring ChatConsumer's own group_send shape for a normal message.
+    from asgiref.sync import async_to_sync
+    from channels.layers import get_channel_layer
+    layer = get_channel_layer()
+    if layer is not None:
+        async_to_sync(layer.group_send)(
+            f'chat_{room.conversation_id}',
+            {
+                'type': 'chat_message',
+                'message_id': message.id,
+                'content': message.content,
+                'message_type': message.message_type,
+                'match_id': message.match_id,
+                'metadata': message.metadata,
+                'sender_id': system_user.id,
+                'sender_username': system_user.username,
+                'sender_avatar': system_user.avatar,
+                'created_at': str(message.created_at),
+            },
+        )
+    return message
