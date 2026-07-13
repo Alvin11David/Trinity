@@ -3,11 +3,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from .models import Conversation, Message, Membership, MessagePollVote
+from .models import Conversation, Message, Membership, MessagePollVote, PinnedMessage
 from .serializers import (
     ConversationSerializer, ConversationCreateSerializer,
-    MessageSerializer
+    MessageSerializer, MembershipSerializer, PinnedMessageSerializer
 )
+from .validators import is_match_room
+
+MAX_PINS_PER_CONVERSATION = 5
 
 
 class ConversationListView(generics.ListCreateAPIView):
@@ -58,14 +61,42 @@ class MessageListView(generics.ListAPIView):
         return conversation.messages.all().select_related('sender')
 
 
+class MessageDetailView(generics.RetrieveAPIView):
+    """Fetch a single message (participant-only). Lets the client patch just
+    one message into its cached thread when a card/poll arrives over the WS,
+    instead of refetching the whole list."""
+    serializer_class = MessageSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_context(self):
+        return {'request': self.request}
+
+    def get_queryset(self):
+        return Message.objects.filter(
+            conversation_id=self.kwargs['pk'],
+            conversation__participants=self.request.user,
+        ).select_related('sender')
+
+    def get_object(self):
+        return get_object_or_404(self.get_queryset(), pk=self.kwargs['message_pk'])
+
+
 class MessageCreateView(generics.CreateAPIView):
     serializer_class = MessageSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        # Set in create() before the serializer is built, so validate() can
+        # enforce the match-room surface restriction.
+        ctx['conversation'] = getattr(self, '_conversation', None)
+        return ctx
 
     def create(self, request, *args, **kwargs):
         conversation = get_object_or_404(
             Conversation, pk=self.kwargs['pk'], participants=request.user
         )
+        self._conversation = conversation
         # Check broadcast channel permissions
         if conversation.conversation_type == 'channel' and conversation.channel_mode == 'broadcast':
             membership = conversation.memberships.filter(user=request.user).first()
@@ -129,6 +160,20 @@ class LeaveConversationView(APIView):
         return Response({'status': 'left'})
 
 
+class ConversationMembersView(generics.ListAPIView):
+    """Member list with roles (participant-only) — ConversationSerializer only
+    exposes the viewer's own membership, so the kick/promote UI needs this to
+    enumerate everyone else and show admin badges."""
+    serializer_class = MembershipSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        conversation = get_object_or_404(
+            Conversation, pk=self.kwargs['pk'], participants=self.request.user
+        )
+        return conversation.memberships.select_related('user').order_by('-role', 'joined_at')
+
+
 def _require_admin(conversation, user):
     """Return True if `user` is an admin of `conversation`."""
     return Membership.objects.filter(
@@ -148,11 +193,12 @@ class KickMemberView(APIView):
         if int(user_id) == request.user.id:
             return Response({'error': 'Use leave to remove yourself.'}, status=status.HTTP_400_BAD_REQUEST)
         membership = get_object_or_404(Membership, conversation=conversation, user_id=user_id)
-        kicked_user = membership.user
         membership.delete()
-        # Mirror removal onto a linked community, if this is a companion channel.
-        from communities.services import sync_membership_to_community
-        sync_membership_to_community(kicked_user, conversation, joined=False)
+        # Deliberately NO community cascade: a channel admin kicking someone
+        # from a community's companion channel removes them from the channel
+        # only — channel admins don't hold community authority (roles aren't
+        # synced), so their kicks can't reach CommunityMembership. Only
+        # community-moderator kicks cascade (communities.views.KickCommunityMemberView).
         return Response({'status': 'kicked'})
 
 

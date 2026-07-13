@@ -97,3 +97,22 @@ class MessagePollVote(models.Model):
 
     def __str__(self):
         return f"{self.user.username} → option {self.option_index} on msg {self.message_id}"
+
+
+class PinnedMessage(models.Model):
+    """A message pinned to the top of a conversation. Capped at 5 per
+    conversation (enforced in the view, not the DB). Match rooms cannot have
+    pins at all. Position of the floating pin cards is a per-user, client-side
+    concern — deliberately NOT stored here; the server only knows WHICH
+    messages are pinned, never where a user drags the cards on their screen."""
+    conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='pinned_messages')
+    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name='pins')
+    pinned_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='pinned_messages')
+    pinned_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('conversation', 'message')
+        ordering = ['pinned_at']
+
+    def __str__(self):
+        return f"Pinned msg {self.message_id} in conv {self.conversation_id}"

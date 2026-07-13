@@ -4,7 +4,8 @@ from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 from .models import Community, CommunityMembership, CommunityPost, CommunityPostVote, CommunityRoom
 from .serializers import (
-    CommunitySerializer, CommunityPostSerializer, CommunityPostCreateSerializer
+    CommunitySerializer, CommunityPostSerializer, CommunityPostCreateSerializer,
+    CommunityMembershipSerializer
 )
 from .services import sync_membership_to_channel
 
@@ -127,6 +128,17 @@ class CommunityPostVoteView(APIView):
                 vote.save()
                 return Response({'status': 'updated', 'vote_type': vote_type})
         return Response({'status': 'voted', 'vote_type': vote_type})
+
+
+class CommunityMembersView(generics.ListAPIView):
+    """Member list with roles — the enumeration surface the kick/promote UI
+    needs (communities are public, so any authenticated user may view)."""
+    serializer_class = CommunityMembershipSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        community = get_object_or_404(Community, pk=self.kwargs['pk'])
+        return community.memberships.select_related('user').order_by('-role', 'joined_at')
 
 
 class PinPostView(APIView):

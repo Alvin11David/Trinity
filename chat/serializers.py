@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Conversation, Message, Membership
+from .models import Conversation, Message, Membership, PinnedMessage
 from users.serializers import UserSerializer
 from users.models import Contact, Follow
 
@@ -78,6 +78,9 @@ class MessageSerializer(serializers.ModelSerializer):
             data.get('message_type', 'text'),
             match_id=data.get('match_id'),
             metadata=data.get('metadata'),
+            # Injected by MessageCreateView so the match-room surface
+            # restriction can be enforced on the REST path too.
+            conversation=self.context.get('conversation'),
         )
         if error:
             raise serializers.ValidationError(error)
@@ -89,14 +92,22 @@ class ConversationSerializer(serializers.ModelSerializer):
     last_message = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
     membership = serializers.SerializerMethodField()
+    # Lets the client know this is a match's live room, which is a restricted
+    # surface (text/goal_event only; no polls, cards, or pinning). The client
+    # hides those affordances; the backend enforces the rules regardless.
+    is_match_room = serializers.SerializerMethodField()
 
     class Meta:
         model = Conversation
         fields = [
             'id', 'conversation_type', 'channel_mode', 'name',
             'description', 'avatar', 'is_public', 'participants',
-            'last_message', 'unread_count', 'membership', 'created_at', 'updated_at'
+            'last_message', 'unread_count', 'membership', 'is_match_room',
+            'created_at', 'updated_at'
         ]
+
+    def get_is_match_room(self, obj):
+        return hasattr(obj, 'match_room')
 
     def get_last_message(self, obj):
         last = obj.messages.last()
@@ -223,3 +234,15 @@ class ConversationCreateSerializer(serializers.ModelSerializer):
                     role='member'
                 )
         return conversation
+
+
+class PinnedMessageSerializer(serializers.ModelSerializer):
+    # Nested full message so the overlay has everything to render, including
+    # match_card's LIVE fields (re-serialized on each fetch — that's what makes
+    # a periodically-refetched pinned match card update its score).
+    message = MessageSerializer(read_only=True)
+    pinned_by = UserSerializer(read_only=True)
+
+    class Meta:
+        model = PinnedMessage
+        fields = ['id', 'conversation', 'message', 'pinned_by', 'pinned_at']

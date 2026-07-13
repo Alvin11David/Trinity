@@ -66,28 +66,18 @@ class MatchRoomView(APIView):
 
     def get(self, request, pk):
         match = get_object_or_404(Match, pk=pk)
-        if not hasattr(match, 'room'):
-            # Create match room automatically
-            conversation = Conversation.objects.create(
-                conversation_type='channel',
-                channel_mode='open',
-                name=f"{match.home_team} vs {match.away_team}",
-                is_public=True
-            )
-            Membership.objects.create(
-                user=request.user,
-                conversation=conversation,
-                role='member'
-            )
-            room = MatchRoom.objects.create(match=match, conversation=conversation)
-        else:
-            room = match.room
-            # Auto join if not a member
-            Membership.objects.get_or_create(
-                user=request.user,
-                conversation=room.conversation,
-                defaults={'role': 'member'}
-            )
+        # Single creation path shared with the scheduled→live hook
+        # (check_for_finished_matches) — this view lazily self-heals a missing
+        # room on first open instead of duplicating the creation logic.
+        from .services import ensure_match_room
+        room = ensure_match_room(match)
+        # Auto-join the requester so the chat WS consumer's membership guard
+        # passes immediately.
+        Membership.objects.get_or_create(
+            user=request.user,
+            conversation=room.conversation,
+            defaults={'role': 'member'}
+        )
         serializer = MatchRoomSerializer(room)
         return Response(serializer.data)
 

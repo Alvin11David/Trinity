@@ -1,16 +1,22 @@
 """
 Community ↔ companion-channel membership sync (CommunityRoom).
 
-Membership syncs bidirectionally: joining a Community also joins its linked
-Conversation (if a CommunityRoom exists), and joining that channel directly
-also joins the Community — same for leaving, in both directions.
+Voluntary membership syncs bidirectionally: joining a Community also joins its
+linked Conversation (if a CommunityRoom exists), and joining that channel
+directly also joins the Community — same for voluntarily leaving, both ways.
+
+Kicks are ASYMMETRIC, matching where the authority lives: a community
+moderator's kick cascades to channel-membership removal (the community is the
+parent space), but a channel admin's kick stays channel-scoped and never
+touches CommunityMembership — channel admins hold no community authority
+(roles aren't synced, so neither is role-derived power).
 
 Roles are deliberately NOT synced: a community moderator is not automatically a
 channel admin, and vice versa. Only membership (being present at all) syncs.
 
-These helpers are called explicitly from the join/leave views on both sides
-(not signals), so there's no mutual-trigger recursion: each direction writes
-the other side's membership row directly and stops.
+These helpers are called explicitly from the join/leave/kick views (not
+signals), so there's no mutual-trigger recursion: each caller writes the other
+side's membership row directly and stops.
 """
 
 

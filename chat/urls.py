@@ -12,6 +12,9 @@ urlpatterns = [
     path('<int:pk>/messages/send/', views.MessageCreateView.as_view(), name='send_message'),
     path('messages/<int:pk>/poll/vote/', views.MessagePollVoteView.as_view(), name='message_poll_vote'),
 
+    # Members
+    path('<int:pk>/members/', views.ConversationMembersView.as_view(), name='conversation_members'),
+
     # Moderation (admin-only)
     path('<int:pk>/members/<int:user_id>/kick/', views.KickMemberView.as_view(), name='kick_member'),
     path('<int:pk>/members/<int:user_id>/promote/', views.PromoteMemberView.as_view(), name='promote_member'),

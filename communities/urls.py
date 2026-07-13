@@ -7,6 +7,9 @@ urlpatterns = [
     path('<int:pk>/', views.CommunityDetailView.as_view(), name='community_detail'),
     path('<int:pk>/join/', views.JoinCommunityView.as_view(), name='join_community'),
 
+    # Members
+    path('<int:pk>/members/', views.CommunityMembersView.as_view(), name='community_members'),
+
     # Moderation (moderator-only)
     path('<int:pk>/members/<int:user_id>/kick/', views.KickCommunityMemberView.as_view(), name='kick_community_member'),
     path('<int:pk>/members/<int:user_id>/promote/', views.PromoteCommunityMemberView.as_view(), name='promote_community_member'),

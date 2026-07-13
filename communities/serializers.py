@@ -3,18 +3,34 @@ from .models import Community, CommunityMembership, CommunityPost, CommunityPost
 from users.serializers import UserSerializer
 
 
+class CommunityMembershipSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+
+    class Meta:
+        model = CommunityMembership
+        fields = ['id', 'user', 'role', 'joined_at']
+
+
 class CommunitySerializer(serializers.ModelSerializer):
     members_count = serializers.SerializerMethodField()
     is_member = serializers.SerializerMethodField()
     user_role = serializers.SerializerMethodField()
+    # Conversation pk of the optional companion channel (CommunityRoom), or
+    # null. Without this the client could only learn the id at creation time —
+    # a returning member couldn't open an existing channel at all.
+    room_conversation_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Community
         fields = [
             'id', 'name', 'description', 'avatar', 'banner',
             'is_official', 'members_count', 'is_member',
-            'user_role', 'created_at'
+            'user_role', 'room_conversation_id', 'created_at'
         ]
+
+    def get_room_conversation_id(self, obj):
+        room = getattr(obj, 'room', None)
+        return room.conversation_id if room else None
 
     def get_members_count(self, obj):
         return obj.members.count()
