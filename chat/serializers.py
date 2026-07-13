@@ -26,6 +26,10 @@ class MessageSerializer(serializers.ModelSerializer):
             'match_card', 'prediction_card', 'poll',
             'is_read', 'created_at'
         ]
+        # conversation is set server-side (MessageCreateView.save), never from
+        # the request body — leaving it writable made it a required input and
+        # 400'd every REST send. sender/created_at are likewise server-owned.
+        read_only_fields = ['conversation', 'created_at']
 
     def get_match_card(self, obj):
         if obj.message_type == 'match_card' and obj.match_id:
