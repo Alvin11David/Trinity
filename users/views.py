@@ -55,19 +55,16 @@ class UserDetailView(generics.RetrieveAPIView):
 
 
 class ProfileDetailView(generics.RetrieveAPIView):
-    """Aggregate profile for any user (Step 4). A blocked relationship in either
-    direction fully HIDES the profile (404) — not just disabled buttons (Step 2's
-    profile-visibility rule)."""
+    """Aggregate profile for any user (Step 4). When a block exists in either
+    direction the profile CONTENT is fully hidden (Step 2's visibility rule) —
+    the serializer masks bio/avatar/counts/favorites/pinned post server-side, so
+    nothing leaks over the API. The endpoint still resolves (rather than 404ing)
+    so the blocker can reach an Unblock affordance; the frontend renders the
+    blocked state from the is_blocked / is_blocked_by flags."""
     serializer_class = ProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = 'username'
-
-    def get_object(self):
-        target = get_object_or_404(User, username=self.kwargs['username'])
-        if target != self.request.user and is_blocked_between(self.request.user, target):
-            from django.http import Http404
-            raise Http404('User not available.')
-        return target
+    queryset = User.objects.all()
 
 
 class FollowView(APIView):

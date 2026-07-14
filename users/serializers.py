@@ -121,6 +121,25 @@ class ProfileSerializer(serializers.ModelSerializer):
         from feed.serializers import PostSerializer
         return PostSerializer(obj.pinned_post, context=self.context).data
 
+    def to_representation(self, obj):
+        data = super().to_representation(obj)
+        # Full content hide when a block exists in either direction (Step 2):
+        # keep only identity (username) + the relationship flags the client needs
+        # to render the blocked state and an Unblock affordance. Everything else
+        # is masked so nothing leaks over the API.
+        if not self.get_is_self(obj) and (data['is_blocked'] or data['is_blocked_by']):
+            for field in (
+                'first_name', 'last_name', 'avatar', 'favorite_league',
+                'favorite_league_name', 'favorite_league_logo', 'favorite_team_name',
+            ):
+                data[field] = None
+            data['bio'] = ''
+            data['favorite_team_id'] = None
+            data['followers_count'] = 0
+            data['following_count'] = 0
+            data['pinned_post'] = None
+        return data
+
 
 class ReportSerializer(serializers.ModelSerializer):
     class Meta:
