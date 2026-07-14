@@ -13,6 +13,25 @@ class CommentSerializer(serializers.ModelSerializer):
         read_only_fields = ['post', 'author']
 
 
+class ProfileReplySerializer(serializers.ModelSerializer):
+    """A user's reply (comment) for the profile Replies tab. Carries enough of
+    the parent post — id, its author's handle, a content snippet — for the row to
+    render "Replying to @x" and deep-link, without re-fetching the post."""
+    author = UserSerializer(read_only=True)
+    post_author_username = serializers.CharField(source='post.author.username', read_only=True)
+    post_content = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Comment
+        fields = [
+            'id', 'post', 'post_author_username', 'post_content',
+            'author', 'parent', 'content', 'created_at',
+        ]
+
+    def get_post_content(self, obj):
+        return (obj.post.content or '')[:120]
+
+
 class PostMediaSerializer(serializers.ModelSerializer):
     class Meta:
         model = PostMedia

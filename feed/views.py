@@ -6,6 +6,7 @@ from django.shortcuts import get_object_or_404
 from .models import Post, Reaction, Comment, PostMedia
 from .serializers import (
     PostSerializer, PostCreateSerializer, CommentSerializer, PostMediaSerializer,
+    ProfileReplySerializer,
 )
 from . import media as media_lib
 from .services import recompute_post_media_state
@@ -246,6 +247,79 @@ class UserPostsView(generics.ListAPIView):
     def get_queryset(self):
         username = self.kwargs['username']
         return _posts_base_qs().filter(author__username=username)
+
+
+# --------------------------------------------------------------------------- #
+# Profile tabs (Step 4) — four separate cursor-paginated endpoints, one per tab
+# (Posts / Replies / Media / Reposts). Each reuses an existing author-filtered
+# query; pagination matches Feed's FollowingCursorPagination convention.
+# --------------------------------------------------------------------------- #
+
+class ProfileTabCursorPagination(CursorPagination):
+    page_size = 20
+    ordering = ('-created_at', '-id')
+    cursor_query_param = 'cursor'
+
+
+class _ProfileTabBase(generics.ListAPIView):
+    """Shared block guard for the profile tabs: if the viewer and the target
+    have a block in either direction, the tab returns nothing (mirrors the full
+    profile hide from Step 2, so the tabs can't leak content past the block)."""
+    permission_classes = [permissions.IsAuthenticated]
+    pagination_class = ProfileTabCursorPagination
+
+    def get_target(self):
+        return get_object_or_404(User, username=self.kwargs['username'])
+
+    def _blocked(self, target):
+        return target != self.request.user and is_blocked_between(self.request.user, target)
+
+
+class ProfilePostsView(_ProfileTabBase):
+    """Author's own posts (reposts included, as they show on a profile). The
+    pinned post is delivered separately by the profile aggregate and rendered at
+    the top by the client, so it isn't special-cased here."""
+    serializer_class = PostSerializer
+
+    def get_queryset(self):
+        target = self.get_target()
+        if self._blocked(target):
+            return Post.objects.none()
+        return _posts_base_qs().filter(author=target)
+
+
+class ProfileRepliesView(_ProfileTabBase):
+    serializer_class = ProfileReplySerializer
+
+    def get_queryset(self):
+        target = self.get_target()
+        if self._blocked(target):
+            return Comment.objects.none()
+        return (
+            Comment.objects.filter(author=target)
+            .select_related('author', 'post', 'post__author')
+            .order_by('-created_at', '-id')
+        )
+
+
+class ProfileMediaView(_ProfileTabBase):
+    serializer_class = PostSerializer
+
+    def get_queryset(self):
+        target = self.get_target()
+        if self._blocked(target):
+            return Post.objects.none()
+        return _posts_base_qs().filter(author=target, media__isnull=False).distinct()
+
+
+class ProfileRepostsView(_ProfileTabBase):
+    serializer_class = PostSerializer
+
+    def get_queryset(self):
+        target = self.get_target()
+        if self._blocked(target):
+            return Post.objects.none()
+        return _posts_base_qs().filter(author=target, repost_of__isnull=False)
 
 
 def _build_comment_tree(comments):

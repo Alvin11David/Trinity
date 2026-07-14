@@ -18,9 +18,14 @@ urlpatterns = [
 
     # Profile
     path('me/', views.ProfileView.as_view(), name='profile'),
+    path('me/pin/', views.PinPostView.as_view(), name='pin_post'),
 
-    # Follow (these come before username catch-all but after specific routes)
+    # Follow / block / report / aggregate profile (all before the username
+    # catch-all but after the specific routes above)
     path('<str:username>/follow/', views.FollowView.as_view(), name='follow'),
+    path('<str:username>/block/', views.BlockView.as_view(), name='block'),
+    path('<str:username>/report/', views.ReportView.as_view(), name='report'),
+    path('<str:username>/profile/', views.ProfileDetailView.as_view(), name='profile_detail'),
     path('<str:username>/followers/', views.FollowersListView.as_view(), name='followers'),
     path('<str:username>/following/', views.FollowingListView.as_view(), name='following'),
 

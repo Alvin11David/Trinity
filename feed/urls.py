@@ -28,6 +28,12 @@ urlpatterns = [
     # Autocomplete / typeahead + Trends surface (Step 9 / 37.5)
     path('autocomplete/', views.AutocompleteView.as_view(), name='autocomplete'),
 
-    # User posts
+    # User posts (legacy non-paginated list, kept for existing callers)
     path('users/<str:username>/posts/', views.UserPostsView.as_view(), name='user_posts'),
+
+    # Profile tabs (Step 4) — four cursor-paginated endpoints
+    path('users/<str:username>/tab/posts/', views.ProfilePostsView.as_view(), name='profile_tab_posts'),
+    path('users/<str:username>/tab/replies/', views.ProfileRepliesView.as_view(), name='profile_tab_replies'),
+    path('users/<str:username>/tab/media/', views.ProfileMediaView.as_view(), name='profile_tab_media'),
+    path('users/<str:username>/tab/reposts/', views.ProfileRepostsView.as_view(), name='profile_tab_reposts'),
 ]
