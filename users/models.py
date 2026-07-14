@@ -13,7 +13,12 @@ def hash_phone(phone_number):
 class User(AbstractUser):
     favorite_club = models.CharField(max_length=100, blank=True, null=True)
     bio = models.TextField(max_length=280, blank=True)
+    # avatar/banner both hold the PUBLIC S3 URL written by the resize-on-finalize
+    # step of the shared photo pipeline (feed/media.py). They stay plain URL
+    # fields — the upload flow just populates them, replacing the old
+    # manual-URL-entry avatar (CLAUDE.md 36.9 reuse, not a second pipeline).
     avatar = models.URLField(blank=True, null=True)
+    banner = models.URLField(blank=True, null=True)  # X-style wide header image
     phone_number = models.CharField(max_length=20, unique=True, null=True, blank=True)
     phone_hash = models.CharField(max_length=64, null=True, blank=True, db_index=True)
     phone_verified = models.BooleanField(default=False)

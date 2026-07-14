@@ -133,19 +133,69 @@ _EXT_FOR_CONTENT_TYPE = {
 }
 
 
-def create_s3_presigned_upload(content_type='image/jpeg'):
+def create_s3_presigned_upload(content_type='image/jpeg', prefix='posts'):
     """Presigned PUT for a direct-to-S3 photo upload. Returns
-    {'upload_url', 'storage_key', 'public_url'}."""
+    {'upload_url', 'storage_key', 'public_url'}. `prefix` scopes the S3 key
+    namespace (posts/ for post photos, avatars/ and banners/ for profile
+    images) — same presigned-PUT mechanism, different folder."""
     if not s3_configured():
         raise MediaConfigError('S3 is not configured (set AWS_* / AWS_S3_BUCKET).')
     ext = _EXT_FOR_CONTENT_TYPE.get(content_type, 'jpg')
-    key = f"posts/{uuid.uuid4().hex}.{ext}"
+    key = f"{prefix}/{uuid.uuid4().hex}.{ext}"
     upload_url = _s3_client().generate_presigned_url(
         'put_object',
         Params={'Bucket': settings.AWS_S3_BUCKET, 'Key': key, 'ContentType': content_type},
         ExpiresIn=3600,
     )
     return {'upload_url': upload_url, 'storage_key': key, 'public_url': public_url_for_key(key)}
+
+
+# Profile-image finalize targets (CLAUDE.md 36.9 reuse). Avatar = square,
+# banner = X-style wide header.
+PROFILE_IMAGE_TARGETS = {
+    'avatar': (400, 400),
+    'banner': (1500, 500),
+}
+# Max bytes accepted for a profile image before Pillow processing — reasonable
+# guard mirroring the spirit of the post-photo path (reject obviously-too-big
+# uploads rather than resize a 50MB file server-side).
+PROFILE_IMAGE_MAX_BYTES = 10 * 1024 * 1024
+
+
+def finalize_profile_image(storage_key, kind):
+    """After the phone's direct S3 PUT, read the object back, validate it with
+    Pillow, cover-crop + resize it to the target for `kind` ('avatar' or
+    'banner'), write the resized JPEG back to the SAME key, and return the public
+    URL. Reuses the exact S3 + Pillow infrastructure the post-photo finalize uses
+    — just with a resize step (ImageOps.fit = cover crop, no distortion)."""
+    if kind not in PROFILE_IMAGE_TARGETS:
+        raise ValueError(f'Unknown profile image kind: {kind}')
+    if not s3_configured():
+        raise MediaConfigError('S3 is not configured.')
+    from PIL import Image, ImageOps
+
+    client = _s3_client()
+    obj = client.get_object(Bucket=settings.AWS_S3_BUCKET, Key=storage_key)
+    body = obj['Body'].read()
+    if len(body) > PROFILE_IMAGE_MAX_BYTES:
+        raise ValueError('Image is too large (max 10MB).')
+
+    # verify() consumes the buffer, so open again for the actual transform.
+    Image.open(io.BytesIO(body)).verify()
+    img = Image.open(io.BytesIO(body)).convert('RGB')
+    img = ImageOps.exif_transpose(img)  # respect phone orientation
+    fitted = ImageOps.fit(img, PROFILE_IMAGE_TARGETS[kind], Image.LANCZOS)
+
+    out = io.BytesIO()
+    fitted.save(out, format='JPEG', quality=88)
+    out.seek(0)
+    client.put_object(
+        Bucket=settings.AWS_S3_BUCKET,
+        Key=storage_key,
+        Body=out.getvalue(),
+        ContentType='image/jpeg',
+    )
+    return public_url_for_key(storage_key)
 
 
 def finalize_photo(media):

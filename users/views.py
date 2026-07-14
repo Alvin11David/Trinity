@@ -106,6 +106,93 @@ class BlockView(APIView):
         return Response({'status': 'unblocked'})
 
 
+class BlockedAccountsView(generics.ListAPIView):
+    """The canonical, always-reachable list of accounts the requester has blocked
+    (Settings → Blocked Accounts). Unblocking is done via the existing
+    DELETE /api/users/<username>/block/ — this view is purely the review surface.
+    The masked stale-link profile view (ProfileDetailView) is unchanged and is
+    NOT a discovery path; this list is."""
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        # Users this requester has blocked (blocker direction only), most-recently
+        # blocked first. `blocked_by` is the reverse relation on Block.blocked, so
+        # this joins each user to their Block row authored by the requester — one
+        # row per user (unique_together(blocker, blocked)), no duplicates.
+        return (
+            User.objects.filter(blocked_by__blocker=self.request.user)
+            .order_by('-blocked_by__created_at')
+        )
+
+
+class ProfileImageUploadURLView(APIView):
+    """Issue a direct-to-S3 presigned PUT for the caller's own avatar or banner
+    (Step 4). Reuses the post-photo pipeline's presigned-upload mechanism — the
+    phone PUTs raw bytes straight to S3, never through Django. `kind` scopes the
+    S3 key prefix (avatars/ or banners/)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    ALLOWED_TYPES = ('image/jpeg', 'image/png', 'image/webp')
+
+    def post(self, request):
+        from feed import media as media_lib
+
+        kind = request.data.get('kind')
+        if kind not in ('avatar', 'banner'):
+            return Response({'error': "kind must be 'avatar' or 'banner'."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        content_type = request.data.get('content_type', 'image/jpeg')
+        if content_type not in self.ALLOWED_TYPES:
+            return Response({'error': 'Unsupported image type (use JPEG, PNG, or WebP).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            cred = media_lib.create_s3_presigned_upload(content_type=content_type, prefix=f'{kind}s')
+        except media_lib.MediaConfigError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return Response({
+            'kind': kind,
+            'upload_url': cred['upload_url'],
+            'storage_key': cred['storage_key'],
+            'content_type': content_type,
+        }, status=status.HTTP_201_CREATED)
+
+
+class ProfileImageFinalizeView(APIView):
+    """Called after the phone's direct S3 PUT succeeds. Reads the object back,
+    validates + cover-crops + resizes it to the target for its kind (avatar →
+    400×400 square, banner → 1500×500 wide) via the shared Pillow finalize, then
+    writes the resulting public URL onto the user's avatar/banner."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from feed import media as media_lib
+
+        kind = request.data.get('kind')
+        storage_key = request.data.get('storage_key') or ''
+        if kind not in ('avatar', 'banner'):
+            return Response({'error': "kind must be 'avatar' or 'banner'."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        # The key must live under this kind's own prefix — a cheap guard so a
+        # finalize can't point at an arbitrary object namespace.
+        if not storage_key.startswith(f'{kind}s/'):
+            return Response({'error': 'Invalid storage key.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            url = media_lib.finalize_profile_image(storage_key, kind)
+        except media_lib.MediaConfigError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except ValueError as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            return Response({'error': f'Could not process image: {exc}'},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        setattr(request.user, kind, url)
+        request.user.save(update_fields=[kind])
+        return Response(UserSerializer(request.user, context={'request': request}).data)
+
+
 class ReportView(APIView):
     """Report a user (Step 3). Captures the report only — no moderation UI."""
     permission_classes = [permissions.IsAuthenticated]

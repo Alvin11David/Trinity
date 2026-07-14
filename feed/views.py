@@ -656,9 +656,15 @@ class AutocompleteView(APIView):
         if not q.startswith('#'):
             from django.contrib.postgres.search import TrigramSimilarity
             from users.models import User
+            from users.blocking import blocked_user_ids
             user_qs = (
                 User.objects.filter(username__istartswith=q)
                 .annotate(sim=TrigramSimilarity('username', q))
+                # Block exclusion (both directions) must apply to the typeahead
+                # too — this is the exact/prefix-username lookup surface, and
+                # without it a blocked user stayed findable by typing their
+                # handle even though the full People tab already hid them.
+                .exclude(id__in=blocked_user_ids(request.user))
                 .order_by('-sim')[:limit]
             )
             users = [

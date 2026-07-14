@@ -20,9 +20,16 @@ urlpatterns = [
     path('me/', views.ProfileView.as_view(), name='profile'),
     path('me/pin/', views.PinPostView.as_view(), name='pin_post'),
 
+    # Avatar / banner upload (reuses the S3 + Pillow photo pipeline)
+    path('me/image/upload-url/', views.ProfileImageUploadURLView.as_view(), name='profile_image_upload_url'),
+    path('me/image/finalize/', views.ProfileImageFinalizeView.as_view(), name='profile_image_finalize'),
+
     # Activity → People (new followers to follow back + suggested people)
     path('activity/followers/', views.NewFollowersView.as_view(), name='new_followers'),
     path('activity/suggestions/', views.SuggestedPeopleView.as_view(), name='suggested_people'),
+
+    # Settings → Blocked Accounts (canonical review/unblock surface)
+    path('blocked/', views.BlockedAccountsView.as_view(), name='blocked_accounts'),
 
     # Follow / block / report / aggregate profile (all before the username
     # catch-all but after the specific routes above)

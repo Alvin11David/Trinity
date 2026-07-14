@@ -17,7 +17,7 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name',
-            'favorite_club', 'bio', 'avatar', 'followers_count',
+            'favorite_club', 'bio', 'avatar', 'banner', 'followers_count',
             'following_count',
             'favorite_team_id', 'favorite_team_name',
             'favorite_league', 'favorite_league_name', 'favorite_league_logo',
@@ -75,7 +75,7 @@ class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'username', 'first_name', 'last_name', 'avatar', 'bio',
+            'id', 'username', 'first_name', 'last_name', 'avatar', 'banner', 'bio',
             'favorite_team_id', 'favorite_team_name',
             'favorite_league', 'favorite_league_name', 'favorite_league_logo',
             'followers_count', 'following_count',
@@ -129,7 +129,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         # is masked so nothing leaks over the API.
         if not self.get_is_self(obj) and (data['is_blocked'] or data['is_blocked_by']):
             for field in (
-                'first_name', 'last_name', 'avatar', 'favorite_league',
+                'first_name', 'last_name', 'avatar', 'banner', 'favorite_league',
                 'favorite_league_name', 'favorite_league_logo', 'favorite_team_name',
             ):
                 data[field] = None
