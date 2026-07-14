@@ -20,6 +20,10 @@ urlpatterns = [
     path('me/', views.ProfileView.as_view(), name='profile'),
     path('me/pin/', views.PinPostView.as_view(), name='pin_post'),
 
+    # Activity → People (new followers to follow back + suggested people)
+    path('activity/followers/', views.NewFollowersView.as_view(), name='new_followers'),
+    path('activity/suggestions/', views.SuggestedPeopleView.as_view(), name='suggested_people'),
+
     # Follow / block / report / aggregate profile (all before the username
     # catch-all but after the specific routes above)
     path('<str:username>/follow/', views.FollowView.as_view(), name='follow'),

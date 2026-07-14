@@ -11,7 +11,7 @@ from .serializers import (
     RequestOTPSerializer, VerifyOTPSerializer, ContactSyncSerializer,
     ProfileSerializer, ProfileUpdateSerializer, ReportSerializer,
 )
-from .blocking import is_blocked_between
+from .blocking import is_blocked_between, blocked_user_ids
 import africastalking
 
 
@@ -250,3 +250,134 @@ class MutualContactsView(generics.ListAPIView):
             user_id__in=my_contacts, matched_user=user
         ).values_list('user_id', flat=True)
         return User.objects.filter(id__in=mutual_ids)
+
+
+# --------------------------------------------------------------------------- #
+# Activity → People (new queries over existing data; NO new models)
+# --------------------------------------------------------------------------- #
+
+class NewFollowersView(generics.ListAPIView):
+    """People who follow the viewer but whom the viewer doesn't follow back — the
+    'Follow-Back' list for the Activity → People segment. Ball's Follow is one-way
+    and instant (no accept/reject), so this is purely a discovery surface. Blocked
+    users (either direction) are excluded."""
+    serializer_class = UserSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        viewer = self.request.user
+        following_ids = Follow.objects.filter(follower=viewer).values_list('following_id', flat=True)
+        follower_ids = Follow.objects.filter(following=viewer).values_list('follower_id', flat=True)
+        return (
+            User.objects.filter(id__in=follower_ids)
+            .exclude(id__in=following_ids)             # not already followed back
+            .exclude(id__in=blocked_user_ids(viewer)) # not blocked either way
+            .order_by('-id')
+        )
+
+
+class SuggestedPeopleView(APIView):
+    """Suggested People for Activity → People. Three parallel candidate sources
+    (same merge/dedup shape as Discovery's 36.6 candidate pools, pointed at people
+    instead of posts), each carrying a reason + count for the frontend chip:
+
+      * interaction       — people the viewer reacted to / commented on, or who
+                            engaged the viewer's posts (Reaction, Comment)
+      * mutual_follows    — friend-of-friend over Follow
+      * groups_in_common  — shared communities or group chats
+
+    All three exclude the viewer, anyone already followed, and anyone blocked in
+    either direction. No weighted ranking for v1 — a simple merge/dedup ordered by
+    total signal is enough.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    LIMIT = 30
+
+    def get(self, request):
+        from collections import defaultdict
+        from django.db.models import Count
+        from feed.models import Reaction, Comment
+        from communities.models import CommunityMembership
+        from chat.models import Membership as ChatMembership
+
+        viewer = request.user
+        following_ids = set(Follow.objects.filter(follower=viewer).values_list('following_id', flat=True))
+        excluded = {viewer.id} | following_ids | blocked_user_ids(viewer)
+
+        reasons = defaultdict(lambda: defaultdict(int))
+
+        # --- Source 1: interaction (both directions) ---
+        interaction = defaultdict(int)
+        for uid in Reaction.objects.filter(user=viewer).values_list('post__author_id', flat=True):
+            interaction[uid] += 1
+        for uid in Comment.objects.filter(author=viewer).values_list('post__author_id', flat=True):
+            interaction[uid] += 1
+        for uid in Reaction.objects.filter(post__author=viewer).values_list('user_id', flat=True):
+            interaction[uid] += 1
+        for uid in Comment.objects.filter(post__author=viewer).values_list('author_id', flat=True):
+            interaction[uid] += 1
+        for uid, n in interaction.items():
+            if uid not in excluded:
+                reasons[uid]['interaction'] = n
+
+        # --- Source 2: mutual follows (people my follows follow) ---
+        if following_ids:
+            mf = (
+                Follow.objects.filter(follower_id__in=following_ids)
+                .exclude(following_id__in=excluded)
+                .values('following_id')
+                .annotate(c=Count('follower_id', distinct=True))
+            )
+            for row in mf:
+                reasons[row['following_id']]['mutual_follows'] = row['c']
+
+        # --- Source 3: groups in common (communities + group chats) ---
+        my_comm_ids = CommunityMembership.objects.filter(user=viewer).values_list('community_id', flat=True)
+        if my_comm_ids:
+            cc = (
+                CommunityMembership.objects.filter(community_id__in=list(my_comm_ids))
+                .exclude(user_id__in=excluded)
+                .values('user_id')
+                .annotate(c=Count('community_id', distinct=True))
+            )
+            for row in cc:
+                reasons[row['user_id']]['groups_in_common'] += row['c']
+
+        my_group_ids = ChatMembership.objects.filter(
+            user=viewer, conversation__conversation_type='group'
+        ).values_list('conversation_id', flat=True)
+        if my_group_ids:
+            gc = (
+                ChatMembership.objects.filter(conversation_id__in=list(my_group_ids))
+                .exclude(user_id__in=excluded)
+                .values('user_id')
+                .annotate(c=Count('conversation_id', distinct=True))
+            )
+            for row in gc:
+                reasons[row['user_id']]['groups_in_common'] += row['c']
+
+        # Merge/dedup: order by total signal (simple, not weighted), cap the list.
+        ranked_ids = sorted(
+            reasons.keys(),
+            key=lambda uid: sum(reasons[uid].values()),
+            reverse=True,
+        )[:self.LIMIT]
+
+        users_by_id = {u.id: u for u in User.objects.filter(id__in=ranked_ids)}
+        # Reason chips in a stable priority order so the client can show the first.
+        PRIORITY = ['mutual_follows', 'groups_in_common', 'interaction']
+        results = []
+        for uid in ranked_ids:
+            user = users_by_id.get(uid)
+            if not user:
+                continue
+            chips = [
+                {'type': t, 'count': reasons[uid][t]}
+                for t in PRIORITY if reasons[uid].get(t)
+            ]
+            results.append({
+                'user': UserSerializer(user, context={'request': request}).data,
+                'reasons': chips,
+            })
+
+        return Response(results)
