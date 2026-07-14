@@ -10,7 +10,7 @@ from .serializers import (
 )
 from . import media as media_lib
 from .services import recompute_post_media_state
-from users.models import Follow
+from users.models import Follow, User
 from users.blocking import exclude_blocked_authors, is_blocked_between
 
 

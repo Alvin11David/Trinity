@@ -145,7 +145,9 @@ class ReportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Report
         fields = ['id', 'reported_user', 'reason', 'detail', 'created_at']
-        read_only_fields = ['id', 'created_at']
+        # reporter + reported_user are set from the request/URL in ReportView,
+        # never from the body — only reason (+ optional detail) come from input.
+        read_only_fields = ['id', 'reported_user', 'created_at']
 
 
 class RegisterSerializer(serializers.ModelSerializer):
