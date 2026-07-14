@@ -1,17 +1,27 @@
 from rest_framework import serializers
-from .models import User, Follow
+from .models import User, Follow, Report
+from leagues.models import League
 
 
 class UserSerializer(serializers.ModelSerializer):
     followers_count = serializers.SerializerMethodField()
     following_count = serializers.SerializerMethodField()
+    # Favorite league denormalized onto the payload (name + logo) so the profile
+    # header can render the badge without a second round-trip. Team is already
+    # flat on the model.
+    favorite_league = serializers.PrimaryKeyRelatedField(read_only=True)
+    favorite_league_name = serializers.CharField(source='favorite_league.name', read_only=True, default=None)
+    favorite_league_logo = serializers.CharField(source='favorite_league.logo', read_only=True, default=None)
 
     class Meta:
         model = User
         fields = [
             'id', 'username', 'email', 'first_name', 'last_name',
             'favorite_club', 'bio', 'avatar', 'followers_count',
-            'following_count', 'created_at'
+            'following_count',
+            'favorite_team_id', 'favorite_team_name',
+            'favorite_league', 'favorite_league_name', 'favorite_league_logo',
+            'created_at'
         ]
 
     def get_followers_count(self, obj):
@@ -19,6 +29,104 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_following_count(self, obj):
         return obj.following.count()
+
+
+class ProfileUpdateSerializer(serializers.ModelSerializer):
+    """Edit Profile (Step 6) + favorite team/league + avatar. `favorite_league`
+    accepts a League pk (or null to clear); team is written via the two flat
+    denormalized fields. All fields optional so a partial PATCH works."""
+    favorite_league = serializers.PrimaryKeyRelatedField(
+        queryset=League.objects.all(), required=False, allow_null=True,
+    )
+
+    class Meta:
+        model = User
+        fields = [
+            'username', 'bio', 'avatar',
+            'favorite_team_id', 'favorite_team_name', 'favorite_league',
+        ]
+        extra_kwargs = {'username': {'required': False}}
+
+    def validate_username(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Username cannot be blank.')
+        if User.objects.exclude(pk=self.instance.pk).filter(username__iexact=value).exists():
+            raise serializers.ValidationError('That username is taken.')
+        return value
+
+
+class ProfileSerializer(serializers.ModelSerializer):
+    """Aggregate profile view (Step 4): identity + counts + the viewer's
+    relationship to this user + the pinned post. Everything the frontend needs to
+    render the header and the right action-button state in one call."""
+    followers_count = serializers.SerializerMethodField()
+    following_count = serializers.SerializerMethodField()
+    favorite_league = serializers.PrimaryKeyRelatedField(read_only=True)
+    favorite_league_name = serializers.CharField(source='favorite_league.name', read_only=True, default=None)
+    favorite_league_logo = serializers.CharField(source='favorite_league.logo', read_only=True, default=None)
+    is_self = serializers.SerializerMethodField()
+    is_following = serializers.SerializerMethodField()
+    is_followed_by = serializers.SerializerMethodField()
+    is_blocked = serializers.SerializerMethodField()      # viewer → this user
+    is_blocked_by = serializers.SerializerMethodField()   # this user → viewer
+    pinned_post = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'username', 'first_name', 'last_name', 'avatar', 'bio',
+            'favorite_team_id', 'favorite_team_name',
+            'favorite_league', 'favorite_league_name', 'favorite_league_logo',
+            'followers_count', 'following_count',
+            'is_self', 'is_following', 'is_followed_by',
+            'is_blocked', 'is_blocked_by', 'pinned_post', 'created_at',
+        ]
+
+    def get_followers_count(self, obj):
+        return obj.followers.count()
+
+    def get_following_count(self, obj):
+        return obj.following.count()
+
+    def _viewer(self):
+        request = self.context.get('request')
+        return request.user if request and request.user.is_authenticated else None
+
+    def get_is_self(self, obj):
+        viewer = self._viewer()
+        return bool(viewer and viewer.id == obj.id)
+
+    def get_is_following(self, obj):
+        viewer = self._viewer()
+        return bool(viewer and Follow.objects.filter(follower=viewer, following=obj).exists())
+
+    def get_is_followed_by(self, obj):
+        viewer = self._viewer()
+        return bool(viewer and Follow.objects.filter(follower=obj, following=viewer).exists())
+
+    def get_is_blocked(self, obj):
+        from .models import Block
+        viewer = self._viewer()
+        return bool(viewer and Block.objects.filter(blocker=viewer, blocked=obj).exists())
+
+    def get_is_blocked_by(self, obj):
+        from .models import Block
+        viewer = self._viewer()
+        return bool(viewer and Block.objects.filter(blocker=obj, blocked=viewer).exists())
+
+    def get_pinned_post(self, obj):
+        if not obj.pinned_post_id:
+            return None
+        from feed.serializers import PostSerializer
+        return PostSerializer(obj.pinned_post, context=self.context).data
+
+
+class ReportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Report
+        fields = ['id', 'reported_user', 'reason', 'detail', 'created_at']
+        read_only_fields = ['id', 'created_at']
 
 
 class RegisterSerializer(serializers.ModelSerializer):

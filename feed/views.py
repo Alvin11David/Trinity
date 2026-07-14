@@ -10,6 +10,7 @@ from .serializers import (
 from . import media as media_lib
 from .services import recompute_post_media_state
 from users.models import Follow
+from users.blocking import exclude_blocked_authors, is_blocked_between
 
 
 # Shared queryset shaping so every feed endpoint fetches the same related rows
@@ -69,7 +70,7 @@ class FeedView(generics.ListAPIView):
         # OR-filter (deduped, keeps the base -created_at ordering). If the viewer
         # follows no leagues, the recap branch matches nothing → just followed
         # users, exactly as before.
-        return _posts_base_qs().filter(
+        qs = _posts_base_qs().filter(
             Q(author_id__in=following_ids)
             | Q(
                 author__username=SYSTEM_USERNAME,
@@ -77,6 +78,9 @@ class FeedView(generics.ListAPIView):
                 match__league_id__in=followed_league_ids,
             )
         )
+        # Step 2: hide posts by anyone blocked in either direction. Same shared
+        # helper used by For You and Search so the exclusion can't drift.
+        return exclude_blocked_authors(qs, user)
 
 
 class GlobalFeedView(generics.ListAPIView):
@@ -183,7 +187,11 @@ class GlobalFeedView(generics.ListAPIView):
                 ).values_list('repost_of_id', flat=True)
             )
 
+        # Step 2: the block exclusion covers all three candidate pools at once
+        # (affinity, trending, social-proof) because they're merged into this one
+        # queryset before ranking — no need to filter each pool separately.
         posts = _posts_base_qs().filter(id__in=candidate_ids).exclude(author=user)
+        posts = exclude_blocked_authors(posts, user)
         return [p.id for p in scoring.rank_posts(posts, user, now=now)]
 
 
@@ -470,9 +478,12 @@ class SearchView(APIView):
     def _post_text_matches(self, q):
         from django.contrib.postgres.search import SearchQuery, SearchVector
         query = SearchQuery(q, search_type='websearch', config='english')
-        return _posts_base_qs().annotate(
+        qs = _posts_base_qs().annotate(
             doc=SearchVector('content', config='english')
         ).filter(doc=query)
+        # Step 2: exclude posts by blocked users from every post-based tab
+        # (Top/Latest/Media all funnel through here).
+        return exclude_blocked_authors(qs, self.request.user)
 
     def _top(self, q, request, limit):
         from . import scoring
@@ -499,6 +510,8 @@ class SearchView(APIView):
         from users.models import User
         from users.serializers import UserSerializer
 
+        from users.blocking import blocked_user_ids
+
         query = SearchQuery(q, search_type='websearch', config='english')
         users = (
             User.objects.annotate(
@@ -506,6 +519,8 @@ class SearchView(APIView):
                 sim=TrigramSimilarity('username', q),
             )
             .filter(Q(doc=query) | Q(username__icontains=q))
+            # Step 2: People search hides blocked users in BOTH directions.
+            .exclude(id__in=blocked_user_ids(request.user))
             .order_by('-sim')[:limit]
         )
         return UserSerializer(users, many=True, context={'request': request}).data

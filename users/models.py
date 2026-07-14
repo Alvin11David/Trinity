@@ -19,6 +19,27 @@ class User(AbstractUser):
     phone_verified = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # Favorite team/league (Step 1). Both optional and INDEPENDENT — no forced
+    # exclusivity; whichever is set displays, both set is harmless. The team is
+    # denormalized (id + name, matching UserTeamFollow's convention — there is no
+    # Team model); the league is a real FK (matching UserLeagueFollow). These are
+    # distinct from the legacy free-text `favorite_club` above, kept as-is.
+    favorite_team_id = models.IntegerField(null=True, blank=True)   # API-Football numeric id
+    favorite_team_name = models.CharField(max_length=100, blank=True)
+    favorite_league = models.ForeignKey(
+        'leagues.League', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='+',
+    )
+
+    # A single pinned post (Step 1). NOT a boolean flag on Post — pinning a new
+    # post just points this FK at it, which automatically replaces any prior pin
+    # (no separate "unpin the old one" step). SET_NULL so deleting the post
+    # silently clears the pin.
+    pinned_post = models.ForeignKey(
+        'feed.Post', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='+',
+    )
+
     def save(self, *args, **kwargs):
         if self.phone_number:
             self.phone_hash = hash_phone(self.phone_number)
@@ -38,6 +59,43 @@ class Follow(models.Model):
 
     def __str__(self):
         return f"{self.follower} follows {self.following}"
+
+
+class Block(models.Model):
+    """A blocks B (Step 2). This is a REAL block, not cosmetic — see
+    users/blocking.py for the shared filter and the effects wired across DMs,
+    Follow, Search, Feed, and profile visibility. Creating a Block auto-deletes
+    any Follow rows in both directions (a block and a follow can't coexist).
+    Unblocking is a plain delete of this row — no auto-refollow."""
+    blocker = models.ForeignKey(User, related_name='blocking', on_delete=models.CASCADE)
+    blocked = models.ForeignKey(User, related_name='blocked_by', on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('blocker', 'blocked')
+
+    def __str__(self):
+        return f"{self.blocker} blocked {self.blocked}"
+
+
+class Report(models.Model):
+    """A user reporting another user (Step 3). Scoped to reporting a USER only —
+    reporting individual posts/messages is deliberately out of scope. This just
+    captures the report; there is no moderation-side review UI yet."""
+    REASONS = [
+        ('spam', 'Spam'),
+        ('harassment', 'Harassment'),
+        ('impersonation', 'Impersonation'),
+        ('other', 'Other'),
+    ]
+    reporter = models.ForeignKey(User, related_name='reports_made', on_delete=models.CASCADE)
+    reported_user = models.ForeignKey(User, related_name='reports_received', on_delete=models.CASCADE)
+    reason = models.CharField(max_length=20, choices=REASONS)
+    detail = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.reporter} reported {self.reported_user} ({self.reason})"
 
 
 class Contact(models.Model):

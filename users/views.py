@@ -5,11 +5,13 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.shortcuts import get_object_or_404
 from django.conf import settings
 from django.db.models import Q
-from .models import User, Follow, Contact, PhoneOTP, hash_phone
+from .models import User, Follow, Contact, PhoneOTP, Block, Report, hash_phone
 from .serializers import (
     UserSerializer, RegisterSerializer, FollowSerializer,
-    RequestOTPSerializer, VerifyOTPSerializer, ContactSyncSerializer
+    RequestOTPSerializer, VerifyOTPSerializer, ContactSyncSerializer,
+    ProfileSerializer, ProfileUpdateSerializer, ReportSerializer,
 )
+from .blocking import is_blocked_between
 import africastalking
 
 
@@ -31,11 +33,18 @@ class RegisterView(generics.CreateAPIView):
 
 
 class ProfileView(generics.RetrieveUpdateAPIView):
-    serializer_class = UserSerializer
+    """The signed-in user's own profile. GET returns the full UserSerializer;
+    PATCH/PUT go through ProfileUpdateSerializer (username/bio/avatar + favorite
+    team/league — Step 6)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
         return self.request.user
+
+    def get_serializer_class(self):
+        if self.request.method in ('PUT', 'PATCH'):
+            return ProfileUpdateSerializer
+        return UserSerializer
 
 
 class UserDetailView(generics.RetrieveAPIView):
@@ -45,6 +54,22 @@ class UserDetailView(generics.RetrieveAPIView):
     lookup_field = 'username'
 
 
+class ProfileDetailView(generics.RetrieveAPIView):
+    """Aggregate profile for any user (Step 4). A blocked relationship in either
+    direction fully HIDES the profile (404) — not just disabled buttons (Step 2's
+    profile-visibility rule)."""
+    serializer_class = ProfileSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = 'username'
+
+    def get_object(self):
+        target = get_object_or_404(User, username=self.kwargs['username'])
+        if target != self.request.user and is_blocked_between(self.request.user, target):
+            from django.http import Http404
+            raise Http404('User not available.')
+        return target
+
+
 class FollowView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -52,11 +77,72 @@ class FollowView(APIView):
         target = get_object_or_404(User, username=username)
         if target == request.user:
             return Response({'error': 'You cannot follow yourself.'}, status=status.HTTP_400_BAD_REQUEST)
+        # A block (either direction) can't coexist with a follow.
+        if is_blocked_between(request.user, target):
+            return Response({'error': 'Unavailable.'}, status=status.HTTP_403_FORBIDDEN)
         follow, created = Follow.objects.get_or_create(follower=request.user, following=target)
         if not created:
             follow.delete()
             return Response({'status': 'unfollowed'})
         return Response({'status': 'followed'})
+
+
+class BlockView(APIView):
+    """POST → block a user (Step 2): creates the Block and auto-deletes any
+    Follow rows in BOTH directions (a block and a follow can't coexist).
+    DELETE → unblock (plain delete of the Block row; no auto-refollow)."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, username):
+        target = get_object_or_404(User, username=username)
+        if target == request.user:
+            return Response({'error': 'You cannot block yourself.'}, status=status.HTTP_400_BAD_REQUEST)
+        Block.objects.get_or_create(blocker=request.user, blocked=target)
+        # Blocking severs any existing follow relationship in both directions.
+        Follow.objects.filter(follower=request.user, following=target).delete()
+        Follow.objects.filter(follower=target, following=request.user).delete()
+        return Response({'status': 'blocked'})
+
+    def delete(self, request, username):
+        target = get_object_or_404(User, username=username)
+        Block.objects.filter(blocker=request.user, blocked=target).delete()
+        return Response({'status': 'unblocked'})
+
+
+class ReportView(APIView):
+    """Report a user (Step 3). Captures the report only — no moderation UI."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, username):
+        target = get_object_or_404(User, username=username)
+        if target == request.user:
+            return Response({'error': 'You cannot report yourself.'}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = ReportSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(reporter=request.user, reported_user=target)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class PinPostView(APIView):
+    """Set/clear the signed-in user's single pinned post (Step 1). POST with
+    {post_id} pins (replacing any prior pin automatically); DELETE clears it. A
+    user may only pin their OWN post."""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from feed.models import Post
+        post = get_object_or_404(Post, pk=request.data.get('post_id'))
+        if post.author_id != request.user.id:
+            return Response({'error': 'You can only pin your own post.'},
+                            status=status.HTTP_403_FORBIDDEN)
+        request.user.pinned_post = post
+        request.user.save(update_fields=['pinned_post'])
+        return Response({'status': 'pinned', 'post_id': post.id})
+
+    def delete(self, request):
+        request.user.pinned_post = None
+        request.user.save(update_fields=['pinned_post'])
+        return Response({'status': 'unpinned'})
 
 
 class FollowersListView(generics.ListAPIView):
