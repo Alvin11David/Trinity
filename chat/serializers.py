@@ -191,6 +191,15 @@ class ConversationCreateSerializer(serializers.ModelSerializer):
             except User.DoesNotExist:
                 raise serializers.ValidationError('Target user not found.')
 
+            # A block (either direction) is a hard, unconditional rejection —
+            # checked BEFORE the mutual-follow rule so a block always wins,
+            # regardless of any surviving contact/follow state (Step 2).
+            from users.blocking import is_blocked_between
+            if is_blocked_between(request.user, target):
+                raise serializers.ValidationError(
+                    'You can no longer message this user.'
+                )
+
             # DMs require a mutual relationship: either a synced mutual contact
             # (inherently two-way), or a mutual follow (both directions must
             # exist — a one-way follow is no longer sufficient).
