@@ -130,6 +130,11 @@ _EXT_FOR_CONTENT_TYPE = {
     'image/png': 'png',
     'image/webp': 'webp',
     'image/gif': 'gif',
+    # HEIC/HEIF now decodable via pillow-heif (registered at startup in
+    # feed/apps.py). The S3 key keeps the real extension; both finalize paths
+    # re-read + re-encode through Pillow regardless.
+    'image/heic': 'heic',
+    'image/heif': 'heif',
 }
 
 

@@ -133,7 +133,9 @@ class ProfileImageUploadURLView(APIView):
     S3 key prefix (avatars/ or banners/)."""
     permission_classes = [permissions.IsAuthenticated]
 
-    ALLOWED_TYPES = ('image/jpeg', 'image/png', 'image/webp')
+    # HEIC/HEIF accepted for real now that pillow-heif is registered at startup
+    # (feed/apps.py) — finalize re-encodes everything to JPEG anyway.
+    ALLOWED_TYPES = ('image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif')
 
     def post(self, request):
         from feed import media as media_lib
