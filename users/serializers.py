@@ -19,7 +19,7 @@ class UserSerializer(serializers.ModelSerializer):
             'id', 'username', 'email', 'first_name', 'last_name',
             'favorite_club', 'bio', 'avatar', 'banner', 'followers_count',
             'following_count',
-            'favorite_team_id', 'favorite_team_name',
+            'favorite_team_id', 'favorite_team_name', 'favorite_team_logo',
             'favorite_league', 'favorite_league_name', 'favorite_league_logo',
             'created_at'
         ]
@@ -43,7 +43,8 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'username', 'bio', 'avatar',
-            'favorite_team_id', 'favorite_team_name', 'favorite_league',
+            'favorite_team_id', 'favorite_team_name', 'favorite_team_logo',
+            'favorite_league',
         ]
         extra_kwargs = {'username': {'required': False}}
 
@@ -76,7 +77,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'id', 'username', 'first_name', 'last_name', 'avatar', 'banner', 'bio',
-            'favorite_team_id', 'favorite_team_name',
+            'favorite_team_id', 'favorite_team_name', 'favorite_team_logo',
             'favorite_league', 'favorite_league_name', 'favorite_league_logo',
             'followers_count', 'following_count',
             'is_self', 'is_following', 'is_followed_by',
@@ -130,7 +131,8 @@ class ProfileSerializer(serializers.ModelSerializer):
         if not self.get_is_self(obj) and (data['is_blocked'] or data['is_blocked_by']):
             for field in (
                 'first_name', 'last_name', 'avatar', 'banner', 'favorite_league',
-                'favorite_league_name', 'favorite_league_logo', 'favorite_team_name',
+                'favorite_league_name', 'favorite_league_logo',
+                'favorite_team_name', 'favorite_team_logo',
             ):
                 data[field] = None
             data['bio'] = ''

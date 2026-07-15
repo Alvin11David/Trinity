@@ -31,6 +31,7 @@ class User(AbstractUser):
     # distinct from the legacy free-text `favorite_club` above, kept as-is.
     favorite_team_id = models.IntegerField(null=True, blank=True)   # API-Football numeric id
     favorite_team_name = models.CharField(max_length=100, blank=True)
+    favorite_team_logo = models.URLField(blank=True, null=True)     # denormalized crest, mirrors favorite_league_logo
     favorite_league = models.ForeignKey(
         'leagues.League', null=True, blank=True,
         on_delete=models.SET_NULL, related_name='+',
