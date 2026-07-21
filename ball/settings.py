@@ -34,6 +34,7 @@ INSTALLED_APPS = [
     'notifications',
     'leagues',
     'players',
+    'teams',
     'django_celery_beat',
 ]
 

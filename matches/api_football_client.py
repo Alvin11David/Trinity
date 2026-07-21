@@ -77,6 +77,20 @@ class APIFootballClient:
     def get_team(self, team_id):
         return self._get('teams', params={'id': team_id})
 
+    def get_teams(self, league_id=None, season=None, team_id=None, search=None):
+        """Bulk team fetch for the Team model sync — /teams?league=&season=
+        returns every club in a competition with identity + venue."""
+        params = {}
+        if league_id:
+            params['league'] = league_id
+        if season:
+            params['season'] = season
+        if team_id:
+            params['id'] = team_id
+        if search:
+            params['search'] = search
+        return self._get('teams', params=params)
+
     def get_team_statistics(self, league_id, team_id, season):
         return self._get('teams/statistics', params={'league': league_id, 'team': team_id, 'season': season})
 

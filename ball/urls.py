@@ -11,4 +11,5 @@ urlpatterns = [
     path('api/notifications/', include('notifications.urls')),
     path('api/leagues/', include('leagues.urls')),
     path('api/players/', include('players.urls')),
+    path('api/teams/', include('teams.urls')),
 ]
