@@ -13,6 +13,18 @@ class PlayerSerializer(serializers.ModelSerializer):
         ]
 
 
+class PlayerSearchSerializer(serializers.ModelSerializer):
+    """Lean payload for the Leagues-tab entity search — omits the heavy
+    `statistics` JSON blob PlayerSerializer carries, which a results list
+    never needs."""
+    class Meta:
+        model = Player
+        fields = [
+            'api_football_id', 'name', 'team_id', 'team_name',
+            'position', 'photo', 'nationality',
+        ]
+
+
 class CountrySerializer(serializers.ModelSerializer):
     class Meta:
         model = Country

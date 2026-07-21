@@ -7,5 +7,7 @@ urlpatterns = [
     path('countries/sync/', views.SyncCountriesView.as_view(), name='sync_countries'),
     path('countries/', views.CountryListView.as_view(), name='country_list'),
 
+    path('search/', views.PlayerSearchView.as_view(), name='player_search'),
+
     path('', views.TeamSquadView.as_view(), name='team_squad'),
 ]

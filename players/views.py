@@ -1,10 +1,12 @@
+from django.contrib.postgres.search import TrigramSimilarity
+from django.db.models import Q
 from rest_framework import generics, status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from matches.api_football_client import api_football_client
 from .models import Player, Country
-from .serializers import PlayerSerializer, CountrySerializer
+from .serializers import PlayerSerializer, PlayerSearchSerializer, CountrySerializer
 
 
 class SyncPlayersView(APIView):
@@ -101,6 +103,34 @@ class TeamSquadView(generics.ListAPIView):
         if player_id:
             queryset = queryset.filter(api_football_id=player_id)
         return queryset
+
+
+class PlayerSearchView(generics.ListAPIView):
+    """Name search for the Leagues-tab entity search, so a user can jump
+    straight to a player without drilling league -> team -> squad.
+
+    Uses pg_trgm (already enabled for Search) so typos still match, but ORs in
+    a plain `icontains` so short/exact substrings that fall under the trigram
+    threshold still surface. Ranked by trigram similarity. Only returns players
+    that have actually been synced (bio sync is core-5-scoped today), so this
+    fills in as more squads sync in — no code change needed."""
+    serializer_class = PlayerSearchSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        q = (self.request.query_params.get('q') or '').strip()
+        if not q:
+            return Player.objects.none()
+        try:
+            limit = min(int(self.request.query_params.get('limit', 20)), 50)
+        except (TypeError, ValueError):
+            limit = 20
+        return (
+            Player.objects
+            .annotate(similarity=TrigramSimilarity('name', q))
+            .filter(Q(name__icontains=q) | Q(similarity__gt=0.2))
+            .order_by('-similarity', 'name')[:limit]
+        )
 
 
 class SyncCountriesView(APIView):
