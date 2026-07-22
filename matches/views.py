@@ -7,6 +7,7 @@ from .models import Match, MatchRoom, MatchEvent, PlayerMatchStat, MatchOdds, Ma
 from .serializers import MatchSerializer, MatchRoomSerializer, MatchCardSerializer, PlayerMatchStatSerializer, MatchOddsSerializer, MatchLineupSerializer
 from .winnie_client import winnie_client
 from chat.models import Conversation, Membership
+from teams.models import Team
 
 class MatchListView(generics.ListAPIView):
     serializer_class = MatchSerializer
@@ -395,6 +396,8 @@ class SyncFixturesView(APIView):
                     'away_team_id': teams['away']['id'],
                     'home_team_logo': teams['home']['logo'],
                     'away_team_logo': teams['away']['logo'],
+                    'home_team_ref': Team.ensure(teams['home']['id'], teams['home']['name'], teams['home']['logo']),
+                    'away_team_ref': Team.ensure(teams['away']['id'], teams['away']['name'], teams['away']['logo']),
                     'kickoff_time': fixture['date'],
                     'status': mapped_status,
                     'status_short': status_short,

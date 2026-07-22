@@ -48,6 +48,20 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
         ]
         extra_kwargs = {'username': {'required': False}}
 
+    def update(self, instance, validated_data):
+        # Keep the Team FK in sync with the denormalized favorite_team_id during
+        # the Phase 3 coexistence window. Only act when the client actually sent
+        # favorite_team_id (partial PATCH may omit it).
+        if 'favorite_team_id' in validated_data:
+            from teams.models import Team
+            fid = validated_data.get('favorite_team_id')
+            instance.favorite_team_ref = Team.ensure(
+                fid,
+                validated_data.get('favorite_team_name', ''),
+                validated_data.get('favorite_team_logo'),
+            ) if fid else None
+        return super().update(instance, validated_data)
+
     def validate_username(self, value):
         value = (value or '').strip()
         if not value:

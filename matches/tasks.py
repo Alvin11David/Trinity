@@ -108,6 +108,7 @@ def sync_player_stats_for_match(match_id):
     """Sync per-player stats for a single finished match."""
     from .models import Match, PlayerMatchStat
     from .api_football_client import api_football_client
+    from teams.models import Team
 
     match = Match.objects.filter(id=match_id).first()
     if not match:
@@ -133,6 +134,7 @@ def sync_player_stats_for_match(match_id):
                 defaults={
                     'player_name': player_info.get('name', ''),
                     'team_id': team_id,
+                    'team_ref': Team.ensure(team_id),
                     'minutes': games_info.get('minutes'),
                     'rating': games_info.get('rating'),
                     'position': games_info.get('position'),
@@ -224,6 +226,7 @@ def _sync_events_core(match):
     upsert logic."""
     from .models import MatchEvent
     from .api_football_client import api_football_client
+    from teams.models import Team
 
     data = api_football_client._get('fixtures/events', params={'fixture': match.api_football_id})
     if not data:
@@ -250,6 +253,7 @@ def _sync_events_core(match):
             minute=(event.get('time') or {}).get('elapsed', 0),
             defaults={
                 'team': team_info.get('name', ''),
+                'team_ref': Team.ensure(team_info.get('id'), team_info.get('name'), team_info.get('logo')),
                 'detail': event.get('detail', ''),
                 'assist_player': assist_info.get('name'),
             }

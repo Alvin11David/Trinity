@@ -10,6 +10,7 @@ def sync_standings_for_league(league_id, season):
     """
     from matches.api_football_client import api_football_client
     from .models import LeagueStanding
+    from teams.models import Team
 
     data = api_football_client.get_standings(league_id=league_id, season=season)
     if not data:
@@ -28,6 +29,7 @@ def sync_standings_for_league(league_id, season):
                     'league_name': league_info['name'],
                     'team_name': team_entry['team']['name'],
                     'team_logo': team_entry['team']['logo'],
+                    'team_ref': Team.ensure(team_entry['team']['id'], team_entry['team']['name'], team_entry['team']['logo']),
                     'rank': team_entry['rank'] or 0,
                     'points': team_entry['points'] or 0,
                     'goals_diff': team_entry['goalsDiff'] or 0,
@@ -53,6 +55,7 @@ def sync_player_stats_for_league(league_id, season):
     """
     from matches.api_football_client import api_football_client
     from .models import PlayerLeagueStat
+    from teams.models import Team
 
     updated_count = 0
 
@@ -82,6 +85,7 @@ def sync_player_stats_for_league(league_id, season):
                     'team_id': team_info.get('id'),
                     'team_name': team_info.get('name', ''),
                     'team_logo': team_info.get('logo'),
+                    'team_ref': Team.ensure(team_info.get('id'), team_info.get('name'), team_info.get('logo')),
                     'goals': goals_info.get('total') or 0,
                     'assists': goals_info.get('assists') or 0,
                     'appearances': games_info.get('appearences') or 0,
@@ -120,6 +124,7 @@ def discover_teams_for_league(league_id, season):
     """Fetch and record every team in a league/season, creating tracking rows."""
     from matches.api_football_client import api_football_client
     from .models import LeagueTeamSyncStatus, League
+    from teams.models import Team
 
     # Guard against creating a stale/mistaken-season cohort (e.g. calling
     # with a leftover season value after a season rollover). If we have no
@@ -143,7 +148,12 @@ def discover_teams_for_league(league_id, season):
         team = entry['team']
         _, was_created = LeagueTeamSyncStatus.objects.get_or_create(
             league_id=league_id, season=season, team_id=team['id'],
-            defaults={'team_name': team['name']}
+            defaults={
+                'team_name': team['name'],
+                # Team.ensure() runs regardless of get_or_create's decision, so
+                # the Team row is refreshed even for already-tracked teams.
+                'team_ref': Team.ensure(team['id'], team.get('name'), team.get('logo')),
+            }
         )
         if was_created:
             created += 1
@@ -161,6 +171,7 @@ def sync_next_batch_of_teams(batch_size=20):
     from .models import LeagueTeamSyncStatus, League
     from players.models import Player
     from matches.api_football_client import api_football_client
+    from teams.models import Team
 
     # Only process rows whose season matches that league's current season.
     # Prevents stale/mistaken-season rows (e.g. a re-discovery run against
@@ -199,6 +210,11 @@ def sync_next_batch_of_teams(batch_size=20):
                         defaults={
                             'team_id': team_info.get('id') or status_row.team_id,
                             'team_name': team_info.get('name') or status_row.team_name,
+                            'team_ref': Team.ensure(
+                                team_info.get('id') or status_row.team_id,
+                                team_info.get('name') or status_row.team_name,
+                                team_info.get('logo'),
+                            ),
                             'name': player_info['name'],
                             'first_name': player_info.get('firstname'),
                             'last_name': player_info.get('lastname'),
@@ -236,6 +252,7 @@ def sync_team_statistics_for_league(league_id, season):
     """Sync TeamStatistics for every team in a league/season."""
     from .models import LeagueTeamSyncStatus, TeamStatistics
     from matches.api_football_client import api_football_client
+    from teams.models import Team
 
     teams = LeagueTeamSyncStatus.objects.filter(league_id=league_id, season=season)
     synced = 0
@@ -250,6 +267,7 @@ def sync_team_statistics_for_league(league_id, season):
             defaults={
                 'team_name': team_info.get('name', team_row.team_name),
                 'team_logo': team_info.get('logo'),
+                'team_ref': Team.ensure(team_row.team_id, team_info.get('name'), team_info.get('logo')),
                 'form': data.get('form') or '',
                 'data': data,
             }

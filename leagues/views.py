@@ -104,6 +104,7 @@ class SyncTeamStatisticsView(APIView):
 
         from matches.api_football_client import api_football_client
         from .models import TeamStatistics
+        from teams.models import Team
 
         data = api_football_client.get_team_statistics(league_id=league_id, team_id=team_id, season=season)
 
@@ -122,6 +123,7 @@ class SyncTeamStatisticsView(APIView):
             defaults={
                 'team_name': team_info.get('name', ''),
                 'team_logo': team_info.get('logo'),
+                'team_ref': Team.ensure(team_id, team_info.get('name'), team_info.get('logo')),
                 'form': data.get('form', ''),
                 'data': data,
             }
@@ -293,11 +295,13 @@ class FollowTeamView(APIView):
         if existing:
             existing.delete()
             return Response({'status': 'unfollowed'})
+        from teams.models import Team
         UserTeamFollow.objects.create(
             user=request.user,
             team_id=team_id,
             team_name=request.data.get('team_name', ''),
             team_logo=request.data.get('team_logo'),
+            team_ref=Team.ensure(team_id, request.data.get('team_name'), request.data.get('team_logo')),
         )
         return Response({'status': 'followed'})
 

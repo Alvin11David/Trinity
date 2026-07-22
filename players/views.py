@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from matches.api_football_client import api_football_client
+from teams.models import Team
 from .models import Player, Country
 from .serializers import PlayerSerializer, PlayerSearchSerializer, CountrySerializer
 
@@ -69,6 +70,7 @@ class SyncPlayersView(APIView):
             defaults={
                 'team_id': team.get('id'),
                 'team_name': team.get('name', ''),
+                'team_ref': Team.ensure(team.get('id'), team.get('name'), team.get('logo')),
                 'name': player.get('name', ''),
                 'first_name': player.get('firstname'),
                 'last_name': player.get('lastname'),
