@@ -32,6 +32,10 @@ class User(AbstractUser):
     favorite_team_id = models.IntegerField(null=True, blank=True)   # API-Football numeric id
     favorite_team_name = models.CharField(max_length=100, blank=True)
     favorite_team_logo = models.URLField(blank=True, null=True)     # denormalized crest, mirrors favorite_league_logo
+    # Team FK migration (Phase 3): nullable ref alongside favorite_team_id, backfilled from it.
+    favorite_team_ref = models.ForeignKey(
+        'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
     favorite_league = models.ForeignKey(
         'leagues.League', null=True, blank=True,
         on_delete=models.SET_NULL, related_name='+',

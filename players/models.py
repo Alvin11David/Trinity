@@ -12,6 +12,10 @@ class Player(models.Model):
     api_football_id = models.IntegerField(unique=True)
     team_id = models.IntegerField()
     team_name = models.CharField(max_length=100)
+    # Team FK migration (Phase 3): nullable ref alongside team_id, backfilled from it.
+    team_ref = models.ForeignKey(
+        'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
     name = models.CharField(max_length=150)
     first_name = models.CharField(max_length=100, blank=True, null=True)
     last_name = models.CharField(max_length=100, blank=True, null=True)

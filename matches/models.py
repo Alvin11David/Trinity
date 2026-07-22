@@ -22,6 +22,16 @@ class Match(models.Model):
     away_team_id = models.IntegerField(null=True, blank=True)
     home_team_logo = models.URLField(blank=True, null=True)
     away_team_logo = models.URLField(blank=True, null=True)
+    # Team FK migration (Phase 3): nullable refs added alongside the denormalized
+    # home_team_id/away_team_id integers. Backfilled from those ids; reads switch
+    # to these in Phase 4; the integer/name/logo columns drop in Phase 5, after
+    # which these get renamed home_team/away_team.
+    home_team_ref = models.ForeignKey(
+        'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
+    away_team_ref = models.ForeignKey(
+        'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
 
     kickoff_time = models.DateTimeField()
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default='scheduled')
@@ -76,6 +86,11 @@ class MatchEvent(models.Model):
     match = models.ForeignKey(Match, on_delete=models.CASCADE, related_name='events')
     event_type = models.CharField(max_length=20, choices=EVENT_TYPES)
     team = models.CharField(max_length=100)
+    # Team FK migration (Phase 3): MatchEvent carries only a team NAME (no id), so
+    # this is backfilled by matching `team` against the parent match's two teams.
+    team_ref = models.ForeignKey(
+        'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
     player = models.CharField(max_length=100, blank=True)
     minute = models.IntegerField()
     detail = models.CharField(max_length=200, blank=True)
@@ -94,6 +109,10 @@ class PlayerMatchStat(models.Model):
     player_id = models.IntegerField()
     player_name = models.CharField(max_length=150)
     team_id = models.IntegerField()
+    # Team FK migration (Phase 3): nullable ref alongside team_id, backfilled from it.
+    team_ref = models.ForeignKey(
+        'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
     minutes = models.IntegerField(null=True, blank=True)
     rating = models.CharField(max_length=10, blank=True, null=True)
     position = models.CharField(max_length=20, blank=True, null=True)

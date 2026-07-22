@@ -8,6 +8,10 @@ class LeagueStanding(models.Model):
     team_id = models.IntegerField()
     team_name = models.CharField(max_length=100)
     team_logo = models.URLField(blank=True, null=True)
+    # Team FK migration (Phase 3): nullable ref alongside team_id, backfilled from it.
+    team_ref = models.ForeignKey(
+        'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
     rank = models.IntegerField()
     points = models.IntegerField()
     goals_diff = models.IntegerField()
@@ -38,6 +42,10 @@ class PlayerLeagueStat(models.Model):
     team_id = models.IntegerField()
     team_name = models.CharField(max_length=100)
     team_logo = models.URLField(blank=True, null=True)
+    # Team FK migration (Phase 3): nullable ref alongside team_id, backfilled from it.
+    team_ref = models.ForeignKey(
+        'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
     goals = models.IntegerField(default=0)
     assists = models.IntegerField(default=0)
     appearances = models.IntegerField(default=0)
@@ -60,6 +68,10 @@ class TeamStatistics(models.Model):
     season = models.IntegerField()
     team_name = models.CharField(max_length=100)
     team_logo = models.URLField(blank=True, null=True)
+    # Team FK migration (Phase 3): nullable ref alongside team_id, backfilled from it.
+    team_ref = models.ForeignKey(
+        'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
     form = models.CharField(max_length=100, blank=True)
     data = models.JSONField()
     updated_at = models.DateTimeField(auto_now=True)
@@ -120,6 +132,10 @@ class UserTeamFollow(models.Model):
     team_id = models.IntegerField()  # API-Football numeric team ID
     team_name = models.CharField(max_length=100, blank=True)
     team_logo = models.URLField(blank=True, null=True)
+    # Team FK migration (Phase 3): nullable ref alongside team_id, backfilled from it.
+    team_ref = models.ForeignKey(
+        'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
     order = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -136,6 +152,10 @@ class LeagueTeamSyncStatus(models.Model):
     season = models.IntegerField()
     team_id = models.IntegerField()
     team_name = models.CharField(max_length=100, blank=True)
+    # Team FK migration (Phase 3): nullable ref alongside team_id, backfilled from it.
+    team_ref = models.ForeignKey(
+        'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+    )
     players_synced = models.BooleanField(default=False)
     synced_at = models.DateTimeField(null=True, blank=True)
     error = models.TextField(blank=True, null=True)
