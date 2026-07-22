@@ -2,13 +2,21 @@ from rest_framework import serializers
 from .models import LeagueStanding, PlayerLeagueStat, TeamStatistics, League, UserTeamFollow
 
 
+# Phase 4: team_name/team_logo read through the Team FK on all league serializers
+# (denormalized columns drop in Phase 5). team_id stays as-is (survives the rename).
 class UserTeamFollowSerializer(serializers.ModelSerializer):
+    team_name = serializers.CharField(source='team_ref.name', read_only=True, allow_null=True)
+    team_logo = serializers.CharField(source='team_ref.logo', read_only=True, allow_null=True)
+
     class Meta:
         model = UserTeamFollow
         fields = ['id', 'team_id', 'team_name', 'team_logo', 'order', 'created_at']
 
 
 class LeagueStandingSerializer(serializers.ModelSerializer):
+    team_name = serializers.CharField(source='team_ref.name', read_only=True, allow_null=True)
+    team_logo = serializers.CharField(source='team_ref.logo', read_only=True, allow_null=True)
+
     class Meta:
         model = LeagueStanding
         fields = [
@@ -20,6 +28,9 @@ class LeagueStandingSerializer(serializers.ModelSerializer):
 
 
 class PlayerLeagueStatSerializer(serializers.ModelSerializer):
+    team_name = serializers.CharField(source='team_ref.name', read_only=True, allow_null=True)
+    team_logo = serializers.CharField(source='team_ref.logo', read_only=True, allow_null=True)
+
     class Meta:
         model = PlayerLeagueStat
         fields = [
@@ -31,6 +42,9 @@ class PlayerLeagueStatSerializer(serializers.ModelSerializer):
 
 
 class TeamStatisticsSerializer(serializers.ModelSerializer):
+    team_name = serializers.CharField(source='team_ref.name', read_only=True, allow_null=True)
+    team_logo = serializers.CharField(source='team_ref.logo', read_only=True, allow_null=True)
+
     class Meta:
         model = TeamStatistics
         fields = ['id', 'league_id', 'team_id', 'season', 'team_name', 'team_logo', 'form', 'data', 'updated_at']

@@ -12,6 +12,10 @@ class UserSerializer(serializers.ModelSerializer):
     favorite_league = serializers.PrimaryKeyRelatedField(read_only=True)
     favorite_league_name = serializers.CharField(source='favorite_league.name', read_only=True, default=None)
     favorite_league_logo = serializers.CharField(source='favorite_league.logo', read_only=True, default=None)
+    # Phase 4: favorite team name/logo via the Team FK (denormalized columns drop
+    # in Phase 5). favorite_team_id stays (survives the rename).
+    favorite_team_name = serializers.CharField(source='favorite_team_ref.name', read_only=True, allow_null=True)
+    favorite_team_logo = serializers.CharField(source='favorite_team_ref.logo', read_only=True, allow_null=True)
 
     class Meta:
         model = User
@@ -80,6 +84,9 @@ class ProfileSerializer(serializers.ModelSerializer):
     favorite_league = serializers.PrimaryKeyRelatedField(read_only=True)
     favorite_league_name = serializers.CharField(source='favorite_league.name', read_only=True, default=None)
     favorite_league_logo = serializers.CharField(source='favorite_league.logo', read_only=True, default=None)
+    # Phase 4: favorite team name/logo via the Team FK (see UserSerializer).
+    favorite_team_name = serializers.CharField(source='favorite_team_ref.name', read_only=True, allow_null=True)
+    favorite_team_logo = serializers.CharField(source='favorite_team_ref.logo', read_only=True, allow_null=True)
     is_self = serializers.SerializerMethodField()
     is_following = serializers.SerializerMethodField()
     is_followed_by = serializers.SerializerMethodField()

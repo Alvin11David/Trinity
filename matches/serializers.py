@@ -3,6 +3,10 @@ from .models import Match, MatchRoom, MatchEvent, PlayerMatchStat, MatchOdds, Ma
 
 
 class MatchEventSerializer(serializers.ModelSerializer):
+    # Phase 4: `team` name now read through the Team FK (was a denormalized
+    # column dropped in Phase 5). Output is identical for all rows (verified).
+    team = serializers.CharField(source='team_ref.name', read_only=True, allow_null=True)
+
     class Meta:
         model = MatchEvent
         fields = ['id', 'event_type', 'team', 'player', 'minute', 'detail', 'assist_player', 'created_at']
@@ -11,6 +15,13 @@ class MatchEventSerializer(serializers.ModelSerializer):
 class MatchSerializer(serializers.ModelSerializer):
     events = MatchEventSerializer(many=True, read_only=True)
     has_room = serializers.SerializerMethodField()
+    # Phase 4: team name/logo read through the Team FK (denormalized columns drop
+    # in Phase 5). The integer home_team_id/away_team_id stay as-is — they survive
+    # the Phase 5 FK rename as the FK's own *_id attribute.
+    home_team = serializers.CharField(source='home_team_ref.name', read_only=True, allow_null=True)
+    away_team = serializers.CharField(source='away_team_ref.name', read_only=True, allow_null=True)
+    home_team_logo = serializers.CharField(source='home_team_ref.logo', read_only=True, allow_null=True)
+    away_team_logo = serializers.CharField(source='away_team_ref.logo', read_only=True, allow_null=True)
 
     class Meta:
         model = Match
@@ -41,6 +52,11 @@ class MatchCardSerializer(serializers.ModelSerializer):
     Optimized for frequent, lightweight fetches — not the full match detail.
     """
     has_prediction = serializers.SerializerMethodField()
+    # Phase 4: team name/logo via the Team FK (see MatchSerializer).
+    home_team = serializers.CharField(source='home_team_ref.name', read_only=True, allow_null=True)
+    away_team = serializers.CharField(source='away_team_ref.name', read_only=True, allow_null=True)
+    home_team_logo = serializers.CharField(source='home_team_ref.logo', read_only=True, allow_null=True)
+    away_team_logo = serializers.CharField(source='away_team_ref.logo', read_only=True, allow_null=True)
 
     class Meta:
         model = Match
@@ -68,15 +84,16 @@ class PlayerMatchStatSerializer(serializers.ModelSerializer):
 
     def get_match_summary(self, obj):
         match = obj.match
+        home, away = match.home_team_ref, match.away_team_ref
         return {
             'kickoff_time': match.kickoff_time,
             'league_name': match.league_name,
-            'home_team': match.home_team,
-            'away_team': match.away_team,
+            'home_team': home.name if home else None,
+            'away_team': away.name if away else None,
             'home_team_id': match.home_team_id,
             'away_team_id': match.away_team_id,
-            'home_team_logo': match.home_team_logo,
-            'away_team_logo': match.away_team_logo,
+            'home_team_logo': home.logo if home else None,
+            'away_team_logo': away.logo if away else None,
             'home_score': match.home_score,
             'away_score': match.away_score,
         }
