@@ -6,8 +6,11 @@ from rest_framework.views import APIView
 
 from matches.api_football_client import api_football_client
 from teams.models import Team
-from .models import Player, Country
-from .serializers import PlayerSerializer, PlayerSearchSerializer, CountrySerializer
+from .models import Player, Country, PlayerMarketValue, PlayerTransfer
+from .serializers import (
+    PlayerSerializer, PlayerSearchSerializer, CountrySerializer,
+    PlayerMarketValueSerializer, PlayerTransferSerializer,
+)
 
 
 class SyncPlayersView(APIView):
@@ -131,6 +134,31 @@ class PlayerSearchView(generics.ListAPIView):
             .filter(Q(name__icontains=q) | Q(similarity__gt=0.2))
             .order_by('-similarity', 'name')[:limit]
         )
+
+
+class PlayerMarketValueHistoryView(generics.ListAPIView):
+    """Transfermarkt market-value time series for a player (for the MV chart).
+    player_id is the API-Football id, matching the rest of the player API."""
+    serializer_class = PlayerMarketValueSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        player_id = self.kwargs['player_id']
+        return PlayerMarketValue.objects.filter(
+            player__api_football_id=player_id
+        ).order_by('date')
+
+
+class PlayerTransfersView(generics.ListAPIView):
+    """Transfermarkt career transfer history for a player (newest first)."""
+    serializer_class = PlayerTransferSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        player_id = self.kwargs['player_id']
+        return PlayerTransfer.objects.filter(
+            player__api_football_id=player_id
+        ).order_by('-date')
 
 
 class SyncCountriesView(APIView):

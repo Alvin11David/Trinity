@@ -8,6 +8,6 @@ class TeamSerializer(serializers.ModelSerializer):
         fields = [
             'api_football_id', 'name', 'code', 'country', 'founded', 'national',
             'logo', 'venue_name', 'venue_city', 'venue_capacity',
-            'transfermarkt_id', 'squad_value_eur', 'transfer_balance_eur',
+            'transfermarkt_id', 'squad_value_eur', 'squad_acquisition_value_eur',
             'match_confidence', 'tm_synced_at', 'updated_at',
         ]
