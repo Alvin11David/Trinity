@@ -4,8 +4,11 @@ Integration spec for enriching Ball's `Player` and `Team` with Transfermarkt dat
 (market value, MV history, transfers, squad value) that API-Football can't provide.
 Second half of the Team-model work — see the FK de-normalization already shipped.
 
-**Status:** spec agreed; schema + `apify_client` + reconcile NOT built yet.
-Token-gated (needs `APIFY_API_TOKEN`).
+**Status:** BUILT + validated end-to-end (2026-07-22). Schema, `apify_client`,
+reconcile, management command + Celery tasks all shipped. Validated on a real Man
+Utd squad run: 30/35 players matched, 624 MV-history rows, 209 transfers, no false
+positives. Not yet: full core-5 syncs run; serializers/endpoints to expose the new
+fields. Run: `manage.py sync_transfermarkt [--code GB1]` (costs money per run).
 
 ---
 
