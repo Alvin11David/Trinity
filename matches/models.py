@@ -16,20 +16,15 @@ class Match(models.Model):
     round = models.CharField(max_length=100, blank=True, null=True)  # e.g. "Regular Season - 1"
     season = models.IntegerField(null=True, blank=True)
 
-    home_team = models.CharField(max_length=100)
-    away_team = models.CharField(max_length=100)
-    home_team_id = models.IntegerField(null=True, blank=True)
-    away_team_id = models.IntegerField(null=True, blank=True)
-    home_team_logo = models.URLField(blank=True, null=True)
-    away_team_logo = models.URLField(blank=True, null=True)
-    # Team FK migration (Phase 3): nullable refs added alongside the denormalized
-    # home_team_id/away_team_id integers. Backfilled from those ids; reads switch
-    # to these in Phase 4; the integer/name/logo columns drop in Phase 5, after
-    # which these get renamed home_team/away_team.
-    home_team_ref = models.ForeignKey(
+    # Team FKs (Phase 5): replaced the denormalized home_team/away_team name
+    # strings + home_team_id/away_team_id ints + logos. home_team_id/away_team_id
+    # still work as these FKs' attnames, so id reads/filters/fan-out are unchanged.
+    # NOTE: match.home_team is now a Team object, not a name string — use
+    # match.home_team.name for the display name.
+    home_team = models.ForeignKey(
         'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
     )
-    away_team_ref = models.ForeignKey(
+    away_team = models.ForeignKey(
         'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
     )
 
@@ -59,7 +54,9 @@ class Match(models.Model):
         ordering = ['kickoff_time']
 
     def __str__(self):
-        return f"{self.home_team} vs {self.away_team} ({self.kickoff_time.date()})"
+        home = self.home_team.name if self.home_team_id else '?'
+        away = self.away_team.name if self.away_team_id else '?'
+        return f"{home} vs {away} ({self.kickoff_time.date()})"
 
 
 class MatchRoom(models.Model):
@@ -85,10 +82,8 @@ class MatchEvent(models.Model):
 
     match = models.ForeignKey(Match, on_delete=models.CASCADE, related_name='events')
     event_type = models.CharField(max_length=20, choices=EVENT_TYPES)
-    team = models.CharField(max_length=100)
-    # Team FK migration (Phase 3): MatchEvent carries only a team NAME (no id), so
-    # this is backfilled by matching `team` against the parent match's two teams.
-    team_ref = models.ForeignKey(
+    # Team FK (Phase 5): replaced the denormalized `team` name string.
+    team = models.ForeignKey(
         'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
     )
     player = models.CharField(max_length=100, blank=True)
@@ -108,9 +103,9 @@ class PlayerMatchStat(models.Model):
     match = models.ForeignKey(Match, on_delete=models.CASCADE, related_name='player_stats')
     player_id = models.IntegerField()
     player_name = models.CharField(max_length=150)
-    team_id = models.IntegerField()
-    # Team FK migration (Phase 3): nullable ref alongside team_id, backfilled from it.
-    team_ref = models.ForeignKey(
+    # Team FK (Phase 5): replaced the denormalized team_id int. team_id still
+    # works as this FK's attname.
+    team = models.ForeignKey(
         'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
     )
     minutes = models.IntegerField(null=True, blank=True)

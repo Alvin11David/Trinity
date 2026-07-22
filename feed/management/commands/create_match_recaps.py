@@ -50,8 +50,9 @@ class Command(BaseCommand):
             if post:
                 created += 1
                 self.stdout.write(
-                    f"  recap #{post.id}: {match.home_team} {match.home_score}-"
-                    f"{match.away_score} {match.away_team}"
+                    f"  recap #{post.id}: {match.home_team.name if match.home_team_id else '?'} "
+                    f"{match.home_score}-{match.away_score} "
+                    f"{match.away_team.name if match.away_team_id else '?'}"
                 )
             else:
                 skipped += 1

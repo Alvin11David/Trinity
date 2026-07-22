@@ -5,11 +5,9 @@ class LeagueStanding(models.Model):
     league_id = models.IntegerField()  # API-Football league ID (e.g. 39 for EPL)
     league_name = models.CharField(max_length=100)
     season = models.IntegerField()
-    team_id = models.IntegerField()
-    team_name = models.CharField(max_length=100)
-    team_logo = models.URLField(blank=True, null=True)
-    # Team FK migration (Phase 3): nullable ref alongside team_id, backfilled from it.
-    team_ref = models.ForeignKey(
+    # Team FK (Phase 5): replaced denormalized team_id/team_name/team_logo.
+    # team_id still works as this FK's attname.
+    team = models.ForeignKey(
         'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
     )
     rank = models.IntegerField()
@@ -26,11 +24,11 @@ class LeagueStanding(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('league_id', 'season', 'team_id')
+        unique_together = ('league_id', 'season', 'team')
         ordering = ['league_id', 'rank']
 
     def __str__(self):
-        return f"{self.team_name} - {self.league_name} ({self.season})"
+        return f"{self.team.name if self.team_id else ''} - {self.league_name} ({self.season})"
 
 
 class PlayerLeagueStat(models.Model):
@@ -39,11 +37,8 @@ class PlayerLeagueStat(models.Model):
     player_id = models.IntegerField()
     player_name = models.CharField(max_length=150)
     player_photo = models.URLField(blank=True, null=True)
-    team_id = models.IntegerField()
-    team_name = models.CharField(max_length=100)
-    team_logo = models.URLField(blank=True, null=True)
-    # Team FK migration (Phase 3): nullable ref alongside team_id, backfilled from it.
-    team_ref = models.ForeignKey(
+    # Team FK (Phase 5): replaced denormalized team_id/team_name/team_logo.
+    team = models.ForeignKey(
         'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
     )
     goals = models.IntegerField(default=0)
@@ -64,12 +59,9 @@ class PlayerLeagueStat(models.Model):
 
 class TeamStatistics(models.Model):
     league_id = models.IntegerField()
-    team_id = models.IntegerField()
     season = models.IntegerField()
-    team_name = models.CharField(max_length=100)
-    team_logo = models.URLField(blank=True, null=True)
-    # Team FK migration (Phase 3): nullable ref alongside team_id, backfilled from it.
-    team_ref = models.ForeignKey(
+    # Team FK (Phase 5): replaced denormalized team_id/team_name/team_logo.
+    team = models.ForeignKey(
         'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
     )
     form = models.CharField(max_length=100, blank=True)
@@ -77,10 +69,10 @@ class TeamStatistics(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = ('league_id', 'team_id', 'season')
+        unique_together = ('league_id', 'team', 'season')
 
     def __str__(self):
-        return f"{self.team_name} stats - {self.season}"
+        return f"{self.team.name if self.team_id else ''} stats - {self.season}"
 
 
 class League(models.Model):
@@ -129,31 +121,28 @@ class UserTeamFollow(models.Model):
     scoring (36.6 / Step 5). Sibling of UserLeagueFollow above.
     """
     user = models.ForeignKey('users.User', on_delete=models.CASCADE, related_name='followed_teams')
-    team_id = models.IntegerField()  # API-Football numeric team ID
-    team_name = models.CharField(max_length=100, blank=True)
-    team_logo = models.URLField(blank=True, null=True)
-    # Team FK migration (Phase 3): nullable ref alongside team_id, backfilled from it.
-    team_ref = models.ForeignKey(
+    # Team FK (Phase 5): replaced denormalized team_id/team_name/team_logo.
+    # team_id still works as this FK's attname (notification fan-out reads it).
+    team = models.ForeignKey(
         'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
     )
     order = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('user', 'team_id')
+        unique_together = ('user', 'team')
         ordering = ['order', 'created_at']
 
     def __str__(self):
-        return f"{self.user.username} follows team {self.team_name or self.team_id}"
+        return f"{self.user.username} follows team {self.team.name if self.team_id else self.team_id}"
 
 
 class LeagueTeamSyncStatus(models.Model):
     league_id = models.IntegerField()
     season = models.IntegerField()
-    team_id = models.IntegerField()
-    team_name = models.CharField(max_length=100, blank=True)
-    # Team FK migration (Phase 3): nullable ref alongside team_id, backfilled from it.
-    team_ref = models.ForeignKey(
+    # Team FK (Phase 5): replaced denormalized team_id/team_name. team_id still
+    # works as this FK's attname (used to fetch players by team).
+    team = models.ForeignKey(
         'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
     )
     players_synced = models.BooleanField(default=False)
@@ -161,4 +150,4 @@ class LeagueTeamSyncStatus(models.Model):
     error = models.TextField(blank=True, null=True)
 
     class Meta:
-        unique_together = ('league_id', 'season', 'team_id')
+        unique_together = ('league_id', 'season', 'team')

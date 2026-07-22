@@ -1,3 +1,4 @@
+from django.contrib.postgres.indexes import GinIndex
 from django.db import models
 
 
@@ -49,6 +50,11 @@ class Team(models.Model):
 
     class Meta:
         ordering = ['name']
+        indexes = [
+            # Trigram GIN index for name search — match search (feed) and the
+            # favorite-team picker now search Team.name via the FK (Phase 5).
+            GinIndex(fields=['name'], name='team_name_trgm', opclasses=['gin_trgm_ops']),
+        ]
 
     def __str__(self):
         return f"{self.name} ({self.api_football_id})"

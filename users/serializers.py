@@ -14,8 +14,8 @@ class UserSerializer(serializers.ModelSerializer):
     favorite_league_logo = serializers.CharField(source='favorite_league.logo', read_only=True, default=None)
     # Phase 4: favorite team name/logo via the Team FK (denormalized columns drop
     # in Phase 5). favorite_team_id stays (survives the rename).
-    favorite_team_name = serializers.CharField(source='favorite_team_ref.name', read_only=True, allow_null=True)
-    favorite_team_logo = serializers.CharField(source='favorite_team_ref.logo', read_only=True, allow_null=True)
+    favorite_team_name = serializers.CharField(source='favorite_team.name', read_only=True, allow_null=True)
+    favorite_team_logo = serializers.CharField(source='favorite_team.logo', read_only=True, allow_null=True)
 
     class Meta:
         model = User
@@ -37,11 +37,20 @@ class UserSerializer(serializers.ModelSerializer):
 
 class ProfileUpdateSerializer(serializers.ModelSerializer):
     """Edit Profile (Step 6) + favorite team/league + avatar. `favorite_league`
-    accepts a League pk (or null to clear); team is written via the two flat
-    denormalized fields. All fields optional so a partial PATCH works."""
+    accepts a League pk (or null to clear). The favorite team is a Team FK now:
+    the client still sends `favorite_team_id` (+ optional name/logo, used only to
+    populate the Team row if it's new); we resolve it to the FK. All fields
+    optional so a partial PATCH works."""
     favorite_league = serializers.PrimaryKeyRelatedField(
         queryset=League.objects.all(), required=False, allow_null=True,
     )
+    # favorite_team_id is no longer a model column — declare it explicitly. Its
+    # attname on the FK is also `favorite_team_id`, so the response still carries it.
+    favorite_team_id = serializers.IntegerField(required=False, allow_null=True)
+    # name/logo accepted only to enrich Team.ensure for a not-yet-synced team; not
+    # stored on User (they live on Team).
+    favorite_team_name = serializers.CharField(required=False, allow_blank=True, write_only=True)
+    favorite_team_logo = serializers.CharField(required=False, allow_blank=True, allow_null=True, write_only=True)
 
     class Meta:
         model = User
@@ -53,17 +62,14 @@ class ProfileUpdateSerializer(serializers.ModelSerializer):
         extra_kwargs = {'username': {'required': False}}
 
     def update(self, instance, validated_data):
-        # Keep the Team FK in sync with the denormalized favorite_team_id during
-        # the Phase 3 coexistence window. Only act when the client actually sent
-        # favorite_team_id (partial PATCH may omit it).
+        # Resolve favorite_team_id -> the Team FK. Only act when the client sent it
+        # (partial PATCH may omit it). The name/logo are consumed here, never stored.
+        name = validated_data.pop('favorite_team_name', '')
+        logo = validated_data.pop('favorite_team_logo', None)
         if 'favorite_team_id' in validated_data:
             from teams.models import Team
-            fid = validated_data.get('favorite_team_id')
-            instance.favorite_team_ref = Team.ensure(
-                fid,
-                validated_data.get('favorite_team_name', ''),
-                validated_data.get('favorite_team_logo'),
-            ) if fid else None
+            fid = validated_data.pop('favorite_team_id')
+            instance.favorite_team = Team.ensure(fid, name, logo) if fid else None
         return super().update(instance, validated_data)
 
     def validate_username(self, value):
@@ -85,8 +91,8 @@ class ProfileSerializer(serializers.ModelSerializer):
     favorite_league_name = serializers.CharField(source='favorite_league.name', read_only=True, default=None)
     favorite_league_logo = serializers.CharField(source='favorite_league.logo', read_only=True, default=None)
     # Phase 4: favorite team name/logo via the Team FK (see UserSerializer).
-    favorite_team_name = serializers.CharField(source='favorite_team_ref.name', read_only=True, allow_null=True)
-    favorite_team_logo = serializers.CharField(source='favorite_team_ref.logo', read_only=True, allow_null=True)
+    favorite_team_name = serializers.CharField(source='favorite_team.name', read_only=True, allow_null=True)
+    favorite_team_logo = serializers.CharField(source='favorite_team.logo', read_only=True, allow_null=True)
     is_self = serializers.SerializerMethodField()
     is_following = serializers.SerializerMethodField()
     is_followed_by = serializers.SerializerMethodField()

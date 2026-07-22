@@ -605,15 +605,17 @@ class SearchView(APIView):
         from matches.models import Match
         from matches.serializers import MatchCardSerializer
 
+        # home_team/away_team are Team FKs now (Phase 5) — search the joined
+        # Team.name (which has its own trigram GIN index; see teams migration).
         matches = (
             Match.objects.annotate(
-                sim=TrigramSimilarity('home_team', q)
-                + TrigramSimilarity('away_team', q)
+                sim=TrigramSimilarity('home_team__name', q)
+                + TrigramSimilarity('away_team__name', q)
                 + TrigramSimilarity('league_name', q)
             )
             .filter(
-                Q(home_team__icontains=q)
-                | Q(away_team__icontains=q)
+                Q(home_team__name__icontains=q)
+                | Q(away_team__name__icontains=q)
                 | Q(league_name__icontains=q)
             )
             .order_by('-sim', 'kickoff_time')[:limit]

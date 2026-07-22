@@ -5,8 +5,8 @@ from .models import LeagueStanding, PlayerLeagueStat, TeamStatistics, League, Us
 # Phase 4: team_name/team_logo read through the Team FK on all league serializers
 # (denormalized columns drop in Phase 5). team_id stays as-is (survives the rename).
 class UserTeamFollowSerializer(serializers.ModelSerializer):
-    team_name = serializers.CharField(source='team_ref.name', read_only=True, allow_null=True)
-    team_logo = serializers.CharField(source='team_ref.logo', read_only=True, allow_null=True)
+    team_name = serializers.CharField(source='team.name', read_only=True, allow_null=True)
+    team_logo = serializers.CharField(source='team.logo', read_only=True, allow_null=True)
 
     class Meta:
         model = UserTeamFollow
@@ -14,8 +14,8 @@ class UserTeamFollowSerializer(serializers.ModelSerializer):
 
 
 class LeagueStandingSerializer(serializers.ModelSerializer):
-    team_name = serializers.CharField(source='team_ref.name', read_only=True, allow_null=True)
-    team_logo = serializers.CharField(source='team_ref.logo', read_only=True, allow_null=True)
+    team_name = serializers.CharField(source='team.name', read_only=True, allow_null=True)
+    team_logo = serializers.CharField(source='team.logo', read_only=True, allow_null=True)
 
     class Meta:
         model = LeagueStanding
@@ -28,8 +28,8 @@ class LeagueStandingSerializer(serializers.ModelSerializer):
 
 
 class PlayerLeagueStatSerializer(serializers.ModelSerializer):
-    team_name = serializers.CharField(source='team_ref.name', read_only=True, allow_null=True)
-    team_logo = serializers.CharField(source='team_ref.logo', read_only=True, allow_null=True)
+    team_name = serializers.CharField(source='team.name', read_only=True, allow_null=True)
+    team_logo = serializers.CharField(source='team.logo', read_only=True, allow_null=True)
 
     class Meta:
         model = PlayerLeagueStat
@@ -42,8 +42,8 @@ class PlayerLeagueStatSerializer(serializers.ModelSerializer):
 
 
 class TeamStatisticsSerializer(serializers.ModelSerializer):
-    team_name = serializers.CharField(source='team_ref.name', read_only=True, allow_null=True)
-    team_logo = serializers.CharField(source='team_ref.logo', read_only=True, allow_null=True)
+    team_name = serializers.CharField(source='team.name', read_only=True, allow_null=True)
+    team_logo = serializers.CharField(source='team.logo', read_only=True, allow_null=True)
 
     class Meta:
         model = TeamStatistics

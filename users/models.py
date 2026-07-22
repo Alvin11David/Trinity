@@ -29,11 +29,10 @@ class User(AbstractUser):
     # denormalized (id + name, matching UserTeamFollow's convention — there is no
     # Team model); the league is a real FK (matching UserLeagueFollow). These are
     # distinct from the legacy free-text `favorite_club` above, kept as-is.
-    favorite_team_id = models.IntegerField(null=True, blank=True)   # API-Football numeric id
-    favorite_team_name = models.CharField(max_length=100, blank=True)
-    favorite_team_logo = models.URLField(blank=True, null=True)     # denormalized crest, mirrors favorite_league_logo
-    # Team FK migration (Phase 3): nullable ref alongside favorite_team_id, backfilled from it.
-    favorite_team_ref = models.ForeignKey(
+    # Favorite team as a Team FK (Phase 5): replaced the denormalized
+    # favorite_team_id/name/logo. `favorite_team_id` still works as this FK's
+    # attname, so the API's favorite_team_id in/out is unchanged.
+    favorite_team = models.ForeignKey(
         'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
     )
     favorite_league = models.ForeignKey(

@@ -133,8 +133,7 @@ def sync_player_stats_for_match(match_id):
                 match=match, player_id=player_info.get('id'),
                 defaults={
                     'player_name': player_info.get('name', ''),
-                    'team_id': team_id,
-                    'team_ref': Team.ensure(team_id),
+                    'team': Team.ensure(team_id),
                     'minutes': games_info.get('minutes'),
                     'rating': games_info.get('rating'),
                     'position': games_info.get('position'),
@@ -252,8 +251,7 @@ def _sync_events_core(match):
             player=player_info.get('name', ''),
             minute=(event.get('time') or {}).get('elapsed', 0),
             defaults={
-                'team': team_info.get('name', ''),
-                'team_ref': Team.ensure(team_info.get('id'), team_info.get('name'), team_info.get('logo')),
+                'team': Team.ensure(team_info.get('id'), team_info.get('name'), team_info.get('logo')),
                 'detail': event.get('detail', ''),
                 'assist_player': assist_info.get('name'),
             }
@@ -292,7 +290,7 @@ def broadcast_match_event(match, event):
             'event': {
                 'id': event.id,
                 'event_type': event.event_type,
-                'team': event.team,
+                'team': event.team.name if event.team_id else None,
                 'player': event.player,
                 'assist_player': event.assist_player,
                 'minute': event.minute,
@@ -360,9 +358,10 @@ def create_goal_event_message(match, event):
     room = ensure_match_room(match)
     system_user = get_system_user()
 
+    event_team = event.team.name if event.team_id else ''
     metadata = {
         'scorer': event.player,
-        'team': event.team,
+        'team': event_team,
         'minute': event.minute,
         'assist': event.assist_player,
         'home_score': match.home_score,
@@ -371,7 +370,7 @@ def create_goal_event_message(match, event):
     message = Message.objects.create(
         conversation=room.conversation,
         sender=system_user,
-        content=f"⚽ {event.player} ({event.team}) {event.minute}'",
+        content=f"⚽ {event.player} ({event_team}) {event.minute}'",
         message_type='goal_event',
         match_id=match.id,
         metadata=metadata,

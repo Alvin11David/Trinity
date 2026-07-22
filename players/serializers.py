@@ -4,7 +4,7 @@ from .models import Player, Country
 
 class PlayerSerializer(serializers.ModelSerializer):
     # Phase 4: team_name via the Team FK (denormalized column drops in Phase 5).
-    team_name = serializers.CharField(source='team_ref.name', read_only=True, allow_null=True)
+    team_name = serializers.CharField(source='team.name', read_only=True, allow_null=True)
 
     class Meta:
         model = Player
@@ -20,7 +20,7 @@ class PlayerSearchSerializer(serializers.ModelSerializer):
     """Lean payload for the Leagues-tab entity search — omits the heavy
     `statistics` JSON blob PlayerSerializer carries, which a results list
     never needs."""
-    team_name = serializers.CharField(source='team_ref.name', read_only=True, allow_null=True)
+    team_name = serializers.CharField(source='team.name', read_only=True, allow_null=True)
 
     class Meta:
         model = Player

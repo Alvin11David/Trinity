@@ -24,12 +24,9 @@ def sync_standings_for_league(league_id, season):
             LeagueStanding.objects.update_or_create(
                 league_id=league_id,
                 season=season,
-                team_id=team_entry['team']['id'],
+                team=Team.ensure(team_entry['team']['id'], team_entry['team']['name'], team_entry['team']['logo']),
                 defaults={
                     'league_name': league_info['name'],
-                    'team_name': team_entry['team']['name'],
-                    'team_logo': team_entry['team']['logo'],
-                    'team_ref': Team.ensure(team_entry['team']['id'], team_entry['team']['name'], team_entry['team']['logo']),
                     'rank': team_entry['rank'] or 0,
                     'points': team_entry['points'] or 0,
                     'goals_diff': team_entry['goalsDiff'] or 0,
@@ -82,10 +79,7 @@ def sync_player_stats_for_league(league_id, season):
                 defaults={
                     'player_name': player_info['name'],
                     'player_photo': player_info.get('photo'),
-                    'team_id': team_info.get('id'),
-                    'team_name': team_info.get('name', ''),
-                    'team_logo': team_info.get('logo'),
-                    'team_ref': Team.ensure(team_info.get('id'), team_info.get('name'), team_info.get('logo')),
+                    'team': Team.ensure(team_info.get('id'), team_info.get('name'), team_info.get('logo')),
                     'goals': goals_info.get('total') or 0,
                     'assists': goals_info.get('assists') or 0,
                     'appearances': games_info.get('appearences') or 0,
@@ -147,13 +141,9 @@ def discover_teams_for_league(league_id, season):
     for entry in data:
         team = entry['team']
         _, was_created = LeagueTeamSyncStatus.objects.get_or_create(
-            league_id=league_id, season=season, team_id=team['id'],
-            defaults={
-                'team_name': team['name'],
-                # Team.ensure() runs regardless of get_or_create's decision, so
-                # the Team row is refreshed even for already-tracked teams.
-                'team_ref': Team.ensure(team['id'], team.get('name'), team.get('logo')),
-            }
+            league_id=league_id, season=season,
+            # Team.ensure() also refreshes the Team row's name/logo.
+            team=Team.ensure(team['id'], team.get('name'), team.get('logo')),
         )
         if was_created:
             created += 1
@@ -208,11 +198,9 @@ def sync_next_batch_of_teams(batch_size=20):
                     Player.objects.update_or_create(
                         api_football_id=player_info['id'],
                         defaults={
-                            'team_id': team_info.get('id') or status_row.team_id,
-                            'team_name': team_info.get('name') or status_row.team_name,
-                            'team_ref': Team.ensure(
+                            'team': Team.ensure(
                                 team_info.get('id') or status_row.team_id,
-                                team_info.get('name') or status_row.team_name,
+                                team_info.get('name') or (status_row.team.name if status_row.team_id else ''),
                                 team_info.get('logo'),
                             ),
                             'name': player_info['name'],
@@ -238,11 +226,11 @@ def sync_next_batch_of_teams(batch_size=20):
             status_row.players_synced = True
             status_row.synced_at = timezone.now()
             status_row.save()
-            results.append(f"{status_row.team_name}: {synced_count} players")
+            results.append(f"{status_row.team.name if status_row.team_id else status_row.team_id}: {synced_count} players")
         except Exception as e:
             status_row.error = str(e)
             status_row.save()
-            results.append(f"{status_row.team_name}: ERROR - {str(e)}")
+            results.append(f"{status_row.team.name if status_row.team_id else status_row.team_id}: ERROR - {str(e)}")
 
     return f"Processed {len(pending)} teams: " + "; ".join(results)
 
@@ -263,11 +251,10 @@ def sync_team_statistics_for_league(league_id, season):
             continue
         team_info = data.get('team') or {}
         TeamStatistics.objects.update_or_create(
-            league_id=league_id, team_id=team_row.team_id, season=season,
+            league_id=league_id,
+            team=Team.ensure(team_row.team_id, team_info.get('name'), team_info.get('logo')),
+            season=season,
             defaults={
-                'team_name': team_info.get('name', team_row.team_name),
-                'team_logo': team_info.get('logo'),
-                'team_ref': Team.ensure(team_row.team_id, team_info.get('name'), team_info.get('logo')),
                 'form': data.get('form') or '',
                 'data': data,
             }

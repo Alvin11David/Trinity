@@ -10,10 +10,9 @@ class Player(models.Model):
     ]
 
     api_football_id = models.IntegerField(unique=True)
-    team_id = models.IntegerField()
-    team_name = models.CharField(max_length=100)
-    # Team FK migration (Phase 3): nullable ref alongside team_id, backfilled from it.
-    team_ref = models.ForeignKey(
+    # Team FK (Phase 5): replaced the denormalized team_id/team_name. `team_id`
+    # still works as this FK's attname, so existing id reads/filters are unchanged.
+    team = models.ForeignKey(
         'teams.Team', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
     )
     name = models.CharField(max_length=150)
@@ -37,10 +36,10 @@ class Player(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ['team_id', 'position', 'number']
+        ordering = ['team', 'position', 'number']
 
     def __str__(self):
-        return f"{self.name} ({self.team_name})"
+        return f"{self.name} ({self.team.name if self.team_id else ''})"
 
 
 class Country(models.Model):

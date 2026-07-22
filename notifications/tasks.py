@@ -24,31 +24,37 @@ _EVENT_TO_NOTIF_TYPE = {
 }
 
 
+def _team_name(team):
+    # Team FK is nullable; guard for the rare match without a resolved team.
+    return team.name if team else ''
+
+
 def _score_str(match):
     hs = match.home_score if match.home_score is not None else 0
     aus = match.away_score if match.away_score is not None else 0
-    return f"{match.home_team} {hs}-{aus} {match.away_team}"
+    return f"{_team_name(match.home_team)} {hs}-{aus} {_team_name(match.away_team)}"
 
 
 def _format_event(event, match):
     """Human title/body for a live event notification."""
     minute = f"{event.minute}'" if event.minute is not None else ''
+    team = _team_name(event.team)  # event.team is a Team FK now (nullable)
     if event.event_type == 'goal':
-        title = f"⚽ GOAL — {event.team}"
+        title = f"⚽ GOAL — {team}"
         scorer = event.player or 'Goal'
         assist = f" (assist: {event.assist_player})" if event.assist_player else ''
         body = f"{scorer} {minute}{assist} · {_score_str(match)}"
     elif event.event_type in ('yellow_card', 'red_card'):
         card = 'Red card' if event.event_type == 'red_card' else 'Yellow card'
-        title = f"🟨 {card} — {event.team}" if event.event_type == 'yellow_card' else f"🟥 {card} — {event.team}"
+        title = f"🟨 {card} — {team}" if event.event_type == 'yellow_card' else f"🟥 {card} — {team}"
         body = f"{event.player} {minute} · {_score_str(match)}"
     elif event.event_type == 'substitution':
-        title = f"🔁 Substitution — {event.team}"
+        title = f"🔁 Substitution — {team}"
         off = event.player or ''
         on = f" ↔ {event.assist_player}" if event.assist_player else ''
         body = f"{off}{on} {minute} · {_score_str(match)}"
     else:
-        title = f"{event.team} — update"
+        title = f"{team} — update"
         body = f"{event.detail or event.event_type} {minute} · {_score_str(match)}"
     return title, body
 
@@ -106,7 +112,7 @@ def fan_out_match_final_notification(match_id):
     match = Match.objects.filter(id=match_id).first()
     if not match:
         return "match not found"
-    title = f"⏱ Full time — {match.home_team} vs {match.away_team}"
+    title = f"⏱ Full time — {_team_name(match.home_team)} vs {_team_name(match.away_team)}"
     body = f"FT · {_score_str(match)}"
     n = _deliver(_team_follower_ids(match), 'match_result', title, body, match.id)
     return f"fanned out FT for match {match_id} to {n} followers"

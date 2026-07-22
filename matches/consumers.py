@@ -49,8 +49,8 @@ class MatchConsumer(AsyncWebsocketConsumer):
             match = Match.objects.get(pk=self.match_id)
             return {
                 'id': match.id,
-                'home_team': match.home_team,
-                'away_team': match.away_team,
+                'home_team': match.home_team.name if match.home_team_id else None,
+                'away_team': match.away_team.name if match.away_team_id else None,
                 'home_score': match.home_score,
                 'away_score': match.away_score,
                 'status': match.status,

@@ -118,12 +118,9 @@ class SyncTeamStatisticsView(APIView):
 
         TeamStatistics.objects.update_or_create(
             league_id=league_id,
-            team_id=team_id,
+            team=Team.ensure(team_id, team_info.get('name'), team_info.get('logo')),
             season=season,
             defaults={
-                'team_name': team_info.get('name', ''),
-                'team_logo': team_info.get('logo'),
-                'team_ref': Team.ensure(team_id, team_info.get('name'), team_info.get('logo')),
                 'form': data.get('form', ''),
                 'data': data,
             }
@@ -247,16 +244,15 @@ class FollowedLeaguesView(generics.ListAPIView):
 
 
 class TeamSearchView(APIView):
-    """Distinct (team_id, team_name, team_logo) search for the favorite-team
-    picker. There is NO Team model — team identity only exists denormalized on
-    Match/TeamStatistics/LeagueStanding. `LeagueStanding` is the source because
-    it's the most complete "which teams are in which league" table. Queries
-    whatever's actually synced (not hardcoded to the core 5), so it scales as more
-    leagues sync in with no code change. Plain icontains — this set is a few
-    hundred teams, no FTS/pg_trgm needed."""
+    """(team_id, team_name, team_logo) search for the favorite-team picker.
+    Now backed by the real Team model (Phase 5), so it covers every synced team
+    (not just those in standings) and needs no dedup — Team is unique per id.
+    Output keys are unchanged (team_id/team_name/team_logo). Plain icontains —
+    a few thousand teams, no FTS/pg_trgm needed here."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        from teams.models import Team
         q = (request.query_params.get('q') or '').strip()
         if not q:
             return Response([])
@@ -265,22 +261,8 @@ class TeamSearchView(APIView):
         except (TypeError, ValueError):
             limit = 30
 
-        rows = (
-            LeagueStanding.objects.filter(team_name__icontains=q)
-            .values('team_id', 'team_name', 'team_logo')
-            .order_by('team_name')
-        )
-        # A team appears once per (league, season) in standings — dedup to one
-        # row per team_id (first name/logo wins; they're stable across a team's
-        # rows in the same season).
-        seen, out = set(), []
-        for r in rows:
-            if r['team_id'] in seen:
-                continue
-            seen.add(r['team_id'])
-            out.append(r)
-            if len(out) >= limit:
-                break
+        rows = Team.objects.filter(name__icontains=q).order_by('name')[:limit]
+        out = [{'team_id': t.pk, 'team_name': t.name, 'team_logo': t.logo} for t in rows]
         return Response(out)
 
 
@@ -298,10 +280,7 @@ class FollowTeamView(APIView):
         from teams.models import Team
         UserTeamFollow.objects.create(
             user=request.user,
-            team_id=team_id,
-            team_name=request.data.get('team_name', ''),
-            team_logo=request.data.get('team_logo'),
-            team_ref=Team.ensure(team_id, request.data.get('team_name'), request.data.get('team_logo')),
+            team=Team.ensure(team_id, request.data.get('team_name'), request.data.get('team_logo')),
         )
         return Response({'status': 'followed'})
 

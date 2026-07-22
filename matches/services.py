@@ -22,7 +22,7 @@ def ensure_match_room(match):
     conversation = Conversation.objects.create(
         conversation_type='channel',
         channel_mode='open',  # anyone in the room can chat during the match
-        name=f"{match.home_team} vs {match.away_team}",
+        name=f"{match.home_team.name if match.home_team_id else '?'} vs {match.away_team.name if match.away_team_id else '?'}",
         is_public=True,
         created_by=None,  # system-created, no human owner
     )

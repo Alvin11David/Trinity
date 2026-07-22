@@ -68,9 +68,7 @@ class SyncPlayersView(APIView):
         Player.objects.update_or_create(
             api_football_id=player['id'],
             defaults={
-                'team_id': team.get('id'),
-                'team_name': team.get('name', ''),
-                'team_ref': Team.ensure(team.get('id'), team.get('name'), team.get('logo')),
+                'team': Team.ensure(team.get('id'), team.get('name'), team.get('logo')),
                 'name': player.get('name', ''),
                 'first_name': player.get('firstname'),
                 'last_name': player.get('lastname'),
