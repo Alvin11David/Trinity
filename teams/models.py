@@ -38,8 +38,8 @@ class Team(models.Model):
 
     # --- Transfermarkt enrichment (populated by the Apify pipeline) ---
     transfermarkt_id = models.IntegerField(unique=True, null=True, blank=True)
-    squad_value_eur = models.BigIntegerField(null=True, blank=True)
-    transfer_balance_eur = models.BigIntegerField(null=True, blank=True)
+    squad_value_eur = models.BigIntegerField(null=True, blank=True)  # squadMarketValueTotalEur
+    squad_acquisition_value_eur = models.BigIntegerField(null=True, blank=True)  # fees paid to assemble
     # Confidence of the auto-match that linked this row to its TM record (0..1).
     # Rows below threshold are left unlinked and logged rather than force-matched.
     match_confidence = models.FloatField(null=True, blank=True)

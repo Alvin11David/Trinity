@@ -86,6 +86,9 @@ class League(models.Model):
     current_season = models.IntegerField(null=True, blank=True)
     is_core_league = models.BooleanField(default=False)
     is_featured = models.BooleanField(default=False)
+    # Transfermarkt competition code (e.g. "GB1") — drives the per-league TM sync.
+    # Null = not enriched. See ball/TRANSFERMARKT.md.
+    transfermarkt_code = models.CharField(max_length=10, blank=True, null=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

@@ -68,8 +68,10 @@ core 5 ≈ $3. Rows carry `recordType`: `player` | `club` | `competition` | `tra
 from apify_client import ApifyClient
 client = ApifyClient(settings.APIFY_API_TOKEN)
 run = client.actor("solidcode/transfermarkt-scraper").call(run_input=run_input)  # BLOCKS
-for item in client.dataset(run["defaultDatasetId"]).iterate_items():
-    ...  # route on item["recordType"]
+# SDK 3.1 returns a typed `Run` object (NOT a dict) — normalize before indexing:
+run_d = run.model_dump(by_alias=True)          # -> camelCase keys incl. defaultDatasetId
+for item in client.dataset(run_d["defaultDatasetId"]).iterate_items():  # items ARE dicts
+    ...  # route on item["recordType"]: player | club | competition | transfer
 ```
 `.call()` **blocks until the run finishes** (minutes for a full league) — so the sync
 MUST run in a **Celery task / management command**, never inside a web request. Our
@@ -101,24 +103,24 @@ Once `transfermarkt_id` is stored, re-syncs are a direct lookup (matching is one
 | Column | TM source |
 |---|---|
 | `transfermarkt_id` | club `id` |
-| `squad_value_eur` | `squadMarketValueTotal.value` |
+| `squad_value_eur` | `squadMarketValueTotalEur` (flattened int) |
 | `squad_acquisition_value_eur` *(add)* | `squadAcquisitionValue.value` |
 | `match_confidence`, `tm_synced_at`, `tm_raw` | audit / full payload |
 | ~~`transfer_balance_eur`~~ | **not in actor output — leave null / drop** |
 
 ### Player (add)
-| Column | TM source |
+| Column | TM source (verified on a live run 2026-07-22) |
 |---|---|
-| `transfermarkt_id` | `id` |
-| `market_value_eur` | `marketValue.value` |
+| `transfermarkt_id` (int) | `id` (string in payload → cast to int) |
+| `market_value_eur` | `marketValueEur` (flattened int; = `marketValue.value`) |
 | `previous_value_eur` | `previousMarketValue.value` |
-| `contract_until` (Date) | `contractUntil` / `currentClubContractUntil` |
-| `preferred_foot` | mapped from `preferredFootId` (see below) |
-| `agent_agency_id` | `consultantAgencyId` (raw id, no name available) |
+| `contract_until` (Date) | `contractUntil` (ISO; `currentClubContractUntil` often null) |
+| `preferred_foot` (str) | **`preferredFoot`** — actor resolves it ("left"/"right"/…); NO map needed |
+| `agent` (str) | **`consultantAgencyName`** — real name (e.g. "Rafaela Pimenta") |
 | `match_confidence`, `tm_synced_at`, `tm_raw` | audit / full payload |
 
-Keep API-Football's `nationality`, `position`, `height`, `birth_place` — better strings
-than TM's numeric ids. Don't duplicate.
+Keep API-Football's `nationality`, `position`, `height`, `birth_place`. TM's
+`nationalityId` is still id-only (no name) → don't use it; API-Football wins.
 
 ### PlayerMarketValue (new child) — powers the value-over-time chart
 `player` FK · `date` (from `determined`) · `value_eur` · `tm_club_id` · `age`
@@ -132,15 +134,20 @@ Note: club names are **not** in history rows (TM ids only); resolve to `Team.nam
 
 ---
 
-## ID-only fields — pragmatic handling
+## ID-only fields — mostly resolved by the actor (verified 2026-07-22)
 
-TM returns numeric ids for foot / position / nationality / agent / country with no
-lookup shipped. Decisions:
-- **`preferredFootId`** → map to a word. Likely `1=right, 2=left, 3=both` **BUT VERIFY
-  on the first real run** (Haaland came back as `3`) before trusting the map.
-- **nationality / position** → keep API-Football's strings; ignore TM's ids.
-- **agent** → store `consultantAgencyId` raw (no readable name obtainable here).
-- everything else → lives in `tm_raw` for later.
+The live run showed the actor ALREADY resolves most ids to readable strings alongside
+the id — `preferredFoot` ("left"), `positionName` ("Centre-Forward"), `positionGroupName`
+("Striker"), **`consultantAgencyName`** ("Rafaela Pimenta"), `outfitterName` ("Nike").
+So we store those strings directly — no mapping tables needed.
+- **preferred foot / agent** → store `preferredFoot` / `consultantAgencyName` strings.
+- **nationality** → still id-only (`nationalityId`, no name) → keep API-Football's.
+- **position** → keep API-Football's `position` (GK/Def/Mid/Att); TM's `positionName`
+  is finer but we don't need it (in `tm_raw` if ever wanted).
+- everything else → lives in `tm_raw`.
+
+Payload notes: TM `id`s are **strings** ("418560"); cast to int. `compact` money is an
+object `{prefix,content,suffix}` — prefer the flattened `*Eur` int fields.
 
 ---
 
@@ -148,11 +155,14 @@ lookup shipped. Decisions:
 
 - **No net transfer balance** in club output (`squadAcquisitionValue` = fees paid to
   assemble squad, not a balance). `transfer_balance_eur` has no source.
-- **Transfer / MV history reference clubs by TM id, not name.**
-- **`preferredFootId` mapping unverified** — confirm empirically first.
+- **Transfer / MV history reference clubs by TM id, not name** (`fromClubId`/`toClubId`/
+  `clubId` are TM string ids) — resolve to `Team.name` via `Team.transfermarkt_id`
+  where possible, else keep the id.
 - **Stadium capacity** stays from API-Football (`Team.venue_capacity`); TM club record
   has address but no capacity.
 - Match quality depends on name/DOB cleanliness — log unmatched rows for review.
+- SDK `.call()` returns a typed `Run`; use `.model_dump(by_alias=True)`. TM ids are
+  strings; money `compact` is an object — use flattened `*Eur` ints.
 
 ---
 
