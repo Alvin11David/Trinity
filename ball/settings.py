@@ -166,6 +166,12 @@ WINNIE_API_BASE_URL = os.getenv('WINNIE_API_BASE_URL', 'http://127.0.0.1:8000')
 API_FOOTBALL_BASE_URL = 'https://v3.football.api-sports.io'
 API_FOOTBALL_KEY = os.getenv('API_FOOTBALL_KEY')
 
+# Transfermarkt enrichment via Apify (solidcode/transfermarkt-scraper).
+# See ball/TRANSFERMARKT.md. Optional at import time — the sync task returns a
+# clear error if unset, same convention as the media providers above.
+APIFY_API_TOKEN = os.getenv('APIFY_API_TOKEN')
+APIFY_TRANSFERMARKT_ACTOR = 'solidcode/transfermarkt-scraper'
+
 # --- Feed media pipeline (CLAUDE.md 36.9 / Step 4) ---
 # Video → Mux direct upload (phone uploads straight to Mux, never through
 # Django); a webhook flips the post processing → ready. Photos → S3 presigned
