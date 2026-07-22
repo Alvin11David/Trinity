@@ -91,3 +91,48 @@ class Team(models.Model):
             if dirty:
                 team.save(update_fields=dirty + ['updated_at'])
         return team
+
+
+class TransfermarktClub(models.Model):
+    """Lightweight Transfermarkt club id -> name/logo cache. Transfer/MV history
+    reference clubs by TM id only (no names in the payload), and most of those
+    clubs aren't in our Team table (historical/foreign). This cache lets us show
+    real club names. Populated from every `club` record the actor returns, plus an
+    on-demand resolver (teams.transfermarkt.resolve_unknown_transfer_clubs) that
+    fetches ids appearing only in transfer history. PK IS the TM club id."""
+    transfermarkt_id = models.IntegerField(primary_key=True)
+    name = models.CharField(max_length=120)
+    logo = models.URLField(blank=True, null=True)
+    country_id = models.IntegerField(null=True, blank=True)  # TM country id
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return f"{self.name} ({self.transfermarkt_id})"
+
+    @classmethod
+    def ensure(cls, tm_id, name, logo=None, country_id=None):
+        """Upsert a TM club into the name cache. Returns the row, or None if tm_id
+        is falsy. Refreshes name/logo when a non-empty value is provided."""
+        if not tm_id:
+            return None
+        obj, created = cls.objects.get_or_create(
+            pk=int(tm_id),
+            defaults={'name': name or '', 'logo': logo, 'country_id': country_id},
+        )
+        if not created:
+            dirty = []
+            if name and obj.name != name:
+                obj.name = name
+                dirty.append('name')
+            if logo and obj.logo != logo:
+                obj.logo = logo
+                dirty.append('logo')
+            if country_id and obj.country_id != country_id:
+                obj.country_id = country_id
+                dirty.append('country_id')
+            if dirty:
+                obj.save(update_fields=dirty + ['updated_at'])
+        return obj

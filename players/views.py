@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from matches.api_football_client import api_football_client
-from teams.models import Team
+from teams.models import Team, TransfermarktClub
 from .models import Player, Country, PlayerMarketValue, PlayerTransfer
 from .serializers import (
     PlayerSerializer, PlayerSearchSerializer, CountrySerializer,
@@ -150,7 +150,8 @@ class PlayerMarketValueHistoryView(generics.ListAPIView):
 
 
 class PlayerTransfersView(generics.ListAPIView):
-    """Transfermarkt career transfer history for a player (newest first)."""
+    """Transfermarkt career transfer history for a player (newest first).
+    Club ids are resolved to names/logos via the TransfermarktClub cache."""
     serializer_class = PlayerTransferSerializer
     permission_classes = [permissions.IsAuthenticated]
 
@@ -159,6 +160,14 @@ class PlayerTransfersView(generics.ListAPIView):
         return PlayerTransfer.objects.filter(
             player__api_football_id=player_id
         ).order_by('-date')
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        rows = list(self.get_queryset())
+        ids = {r.from_tm_club_id for r in rows} | {r.to_tm_club_id for r in rows}
+        ids.discard(None)
+        ctx['clubs'] = {c.pk: c for c in TransfermarktClub.objects.filter(pk__in=ids)}
+        return ctx
 
 
 class SyncCountriesView(APIView):

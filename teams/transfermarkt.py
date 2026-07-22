@@ -14,7 +14,7 @@ from difflib import SequenceMatcher
 from django.utils import timezone
 
 from .apify_client import apify_transfermarkt_client
-from .models import Team
+from .models import Team, TransfermarktClub
 
 logger = logging.getLogger(__name__)
 
@@ -190,9 +190,12 @@ def process_items(items, candidate_teams):
     clubs = [i for i in items if i.get('recordType') == 'club']
     players = [i for i in items if i.get('recordType') == 'player']
 
-    # 1) Clubs -> Team; build tm_club_id -> Team for scoping players.
+    # 1) Clubs -> Team; build tm_club_id -> Team for scoping players. Every club
+    #    record also seeds the TM club name cache (used to resolve transfer/MV
+    #    history club ids -> names), whether or not it matched one of our Teams.
     tm_club_to_team = {}
     for tm in clubs:
+        TransfermarktClub.ensure(tm.get('id'), tm.get('name'), tm.get('crestUrl'), tm.get('countryId'))
         team, conf = match_club(tm, candidate_teams)
         if team:
             _apply_club(team, tm, conf, now)
@@ -218,6 +221,48 @@ def process_items(items, candidate_teams):
                 f"player {tm.get('name')!r} dob={tm.get('dateOfBirth')} (best {conf:.2f})")
 
     return summary
+
+
+def resolve_unknown_transfer_clubs(max_clubs=300):
+    """Fetch names for TM club ids that appear in transfer/MV history but aren't in
+    the TransfermarktClub cache yet (historical/foreign clubs not in any synced
+    league). Each club is one actor result row (~$0.001). Returns count resolved.
+
+    Also seeds the cache from our matched Teams first (free) — a Team with a
+    transfermarkt_id already gives us that club's name/logo."""
+    from players.models import PlayerTransfer, PlayerMarketValue
+
+    # Free: seed from matched Teams.
+    for t in Team.objects.exclude(transfermarkt_id__isnull=True):
+        TransfermarktClub.ensure(t.transfermarkt_id, t.name, t.logo)
+
+    known = set(TransfermarktClub.objects.values_list('pk', flat=True))
+    ids = set()
+    for f, t in PlayerTransfer.objects.values_list('from_tm_club_id', 'to_tm_club_id'):
+        for cid in (f, t):
+            if cid and cid not in known:
+                ids.add(cid)
+    for cid in PlayerMarketValue.objects.values_list('tm_club_id', flat=True):
+        if cid and cid not in known:
+            ids.add(cid)
+
+    ids = list(ids)[:max_clubs]
+    if not ids:
+        return 0
+
+    urls = [f'https://www.transfermarkt.com/-/startseite/verein/{cid}' for cid in ids]
+    items = apify_transfermarkt_client.run_urls(urls, max_results=len(urls) + 10)
+    if items is None:
+        return 0
+
+    resolved = 0
+    for it in items:
+        if it.get('recordType') != 'club':
+            continue
+        if TransfermarktClub.ensure(it.get('id'), it.get('name'), it.get('crestUrl'), it.get('countryId')):
+            resolved += 1
+    logger.info(f'resolve_unknown_transfer_clubs: requested {len(ids)}, resolved {resolved}')
+    return resolved
 
 
 def sync_league(league):

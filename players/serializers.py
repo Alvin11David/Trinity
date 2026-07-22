@@ -26,12 +26,39 @@ class PlayerMarketValueSerializer(serializers.ModelSerializer):
 
 
 class PlayerTransferSerializer(serializers.ModelSerializer):
+    # Transfer rows carry TM club IDs only; resolve to names/logos via the
+    # TransfermarktClub cache passed in `context['clubs']` (tm_id -> club).
+    from_club = serializers.SerializerMethodField()
+    to_club = serializers.SerializerMethodField()
+    from_club_logo = serializers.SerializerMethodField()
+    to_club_logo = serializers.SerializerMethodField()
+
     class Meta:
         model = PlayerTransfer
         fields = [
-            'date', 'from_tm_club_id', 'to_tm_club_id', 'fee_eur',
-            'market_value_eur', 'transfer_type', 'season_id',
+            'date', 'from_tm_club_id', 'to_tm_club_id',
+            'from_club', 'to_club', 'from_club_logo', 'to_club_logo',
+            'fee_eur', 'market_value_eur', 'transfer_type', 'season_id',
         ]
+
+    def _club(self, cid):
+        return (self.context.get('clubs') or {}).get(cid)
+
+    def get_from_club(self, obj):
+        c = self._club(obj.from_tm_club_id)
+        return c.name if c else None
+
+    def get_to_club(self, obj):
+        c = self._club(obj.to_tm_club_id)
+        return c.name if c else None
+
+    def get_from_club_logo(self, obj):
+        c = self._club(obj.from_tm_club_id)
+        return c.logo if c else None
+
+    def get_to_club_logo(self, obj):
+        c = self._club(obj.to_tm_club_id)
+        return c.logo if c else None
 
 
 class PlayerSearchSerializer(serializers.ModelSerializer):
