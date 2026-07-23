@@ -14,6 +14,7 @@ import Chat from './pages/Chat'
 import Notifications from './pages/Notifications'
 import Profile from './pages/Profile'
 import Settings from './pages/Settings'
+import ForgotPassword from './pages/ForgotPassword'
 
 function PrivateRoute({ children }) {
   const { isAuthenticated } = useAuth()
@@ -27,6 +28,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/register" element={isAuthenticated ? <Navigate to="/" replace /> : <Register />} />
+      <Route path="/forgot-password" element={isAuthenticated ? <Navigate to="/" replace /> : <ForgotPassword />} />
 
       <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
         <Route index element={<Feed />} />

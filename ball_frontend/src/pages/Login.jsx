@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { Eye, EyeOff, Sun, Moon, Loader2 } from 'lucide-react'
@@ -350,9 +350,9 @@ export default function Login() {
 
             {/* Forgot password */}
             <div className="flex justify-end -mt-1">
-              <button type="button" className="text-xs font-semibold transition-colors hover:underline" style={{ color: 'var(--primary)' }}>
+              <Link to="/forgot-password" className="text-xs font-semibold transition-colors hover:underline" style={{ color: 'var(--primary)' }}>
                 Forgot password?
-              </button>
+              </Link>
             </div>
 
             {/* Submit — glowing CTA */}
