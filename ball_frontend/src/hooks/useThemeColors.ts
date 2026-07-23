@@ -1,0 +1,72 @@
+import { useTheme } from '../context/ThemeContext';
+
+export function useThemeColors() {
+  const { isDark, toggleTheme } = useTheme();
+  return {
+    // Backgrounds
+    bg: isDark ? '#0d1117' : '#f8fafc',
+    surface: isDark ? '#161b22' : '#ffffff',
+    card: isDark ? '#21262d' : '#ffffff',
+    // Borders
+    border: isDark ? '#30363d' : '#e2e8f0',
+    // Text
+    text: isDark ? '#e6edf3' : '#0f172a',
+    muted: isDark ? '#8b949e' : '#64748b',
+    // Primary
+    primary: isDark ? '#22c55e' : '#16a34a',
+    primaryHover: isDark ? '#16a34a' : '#15803d',
+    primaryLight: isDark ? '#052e16' : '#dcfce7',
+    primaryLightBg: isDark ? '#052e16' : '#f0fdf4',
+    // Standard Tailwind equivalents for both modes
+    green50: isDark ? '#052e16' : '#f0fdf4',
+    green100: isDark ? '#052e16' : '#dcfce7',
+    green400: '#4ade80',
+    green500: '#22c55e',
+    green600: '#16a34a',
+    green700: '#15803d',
+    green950: '#052e16',
+    gray50: isDark ? '#21262d' : '#f9fafb',
+    gray100: isDark ? '#21262d' : '#f3f4f6',
+    gray200: isDark ? '#30363d' : '#e5e7eb',
+    gray300: isDark ? '#484f58' : '#d1d5db',
+    gray400: isDark ? '#6e7681' : '#9ca3af',
+    gray500: isDark ? '#8b949e' : '#6b7280',
+    gray600: isDark ? '#8b949e' : '#4b5563',
+    gray700: isDark ? '#30363d' : '#374151',
+    gray800: isDark ? '#161b22' : '#1f2937',
+    gray900: isDark ? '#0d1117' : '#111827',
+    red50: isDark ? '#450a0a' : '#fef2f2',
+    red100: isDark ? '#450a0a' : '#fee2e2',
+    red400: '#f87171',
+    red500: '#ef4444',
+    red700: '#b91c1c',
+    red950: '#450a0a',
+    blue100: isDark ? '#172554' : '#dbeafe',
+    blue400: '#60a5fa',
+    blue500: '#3b82f6',
+    blue950: '#172554',
+    yellow100: isDark ? '#422006' : '#fef9c3',
+    yellow400: '#facc15',
+    yellow500: '#eab308',
+    yellow700: '#a16207',
+    yellow950: '#422006',
+    purple100: isDark ? '#3b0764' : '#f3e8ff',
+    purple500: '#a855f7',
+    purple950: '#3b0764',
+    orange100: isDark ? '#431407' : '#ffedd5',
+    orange500: '#f97316',
+    orange950: '#431407',
+    pink100: isDark ? '#500724' : '#fce7f3',
+    pink500: '#ec4899',
+    pink950: '#500724',
+    indigo100: isDark ? '#1e1b4b' : '#e0e7ff',
+    indigo500: '#6366f1',
+    indigo950: '#1e1b4b',
+    sky100: isDark ? '#082f49' : '#e0f2fe',
+    sky500: '#0ea5e9',
+    sky950: '#082f49',
+    // Utility
+    isDark,
+    toggleTheme,
+  };
+}
