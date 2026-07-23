@@ -13,6 +13,7 @@ import Communities from './pages/Communities'
 import Chat from './pages/Chat'
 import Notifications from './pages/Notifications'
 import Profile from './pages/Profile'
+import Settings from './pages/Settings'
 
 function PrivateRoute({ children }) {
   const { isAuthenticated } = useAuth()
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="notifications" element={<Notifications />} />
         <Route path="profile/:username" element={<Profile />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="settings" element={<Settings />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

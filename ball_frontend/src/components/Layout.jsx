@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import {
   Home, Trophy, Users, Globe, MessageCircle, Bell,
-  User, LogOut, Sun, Moon, Search, Menu, X, Zap,
+  User, LogOut, Sun, Moon, Menu, X, Zap, Settings,
 } from 'lucide-react'
 import { useState } from 'react'
 import { CURRENT_USER, NOTIFICATIONS } from '../utils/mock'
@@ -94,6 +94,14 @@ export default function Layout() {
 
         {/* Bottom controls */}
         <div className="space-y-2 mt-4">
+          <NavLink
+            to="/settings"
+            className={({ isActive }) => clsx('nav-item', isActive && 'active')}
+          >
+            <Settings size={20} strokeWidth={1.8} />
+            <span>Settings</span>
+          </NavLink>
+
           <button
             onClick={toggleTheme}
             className="nav-item w-full text-left"
